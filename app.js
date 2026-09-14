@@ -39,10 +39,111 @@ function fillMinorCategories() { const major = $("#majorInput").value; $("#minor
 function openExpenseDialog() { $("#dateInput").value = localDateTime(); $("#expenseDialog").showModal(); setTimeout(() => $("#amountInput").focus(), 100); }
 function deleteRecord(id) { if (!confirm("确定删除这条记录吗？")) return; const { store, account } = currentAccount(); account.records = account.records.filter((record) => String(record.id) !== String(id)); persist(store); renderActiveView(); showToast("记录已删除"); }
 function saveBudget(category) { const { store, account } = currentAccount(); account.budgets[selectedMonth] ||= {}; account.budgets[selectedMonth][category] = Number(document.querySelector(`[data-budget="${CSS.escape(category)}"]`).value || 0); persist(store); renderAnalysis(); showToast("预算已保存"); }
-function exportBackup() { const blob = new Blob([JSON.stringify(currentAccount().account, null, 2)], { type: "application/json" }), link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `情绪稳定-${localMonth()}.json`; link.click(); URL.revokeObjectURL(link.href); }
+function backupPayload() {
+  return { format: "emotion-ledger-backup", version: 1, exportedAt: new Date().toISOString(), account: currentAccount().account };
+}
+async function deliverFile(file, title) {
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ title, files: [file] }); return; }
+    catch (error) { if (error.name === "AbortError") return; }
+  }
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(file); link.download = file.name; link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  showToast("文件已导出");
+}
+async function exportBackup() {
+  const fileName = `情绪稳定-${localMonth()}.json`;
+  await deliverFile(new File([JSON.stringify(backupPayload(), null, 2)], fileName, { type: "application/json" }), "情绪稳定完整备份");
+}
+function csvCell(value) { return `"${String(value ?? "").replace(/"/g, '""')}"`; }
+async function exportCsv() {
+  const headers = ["ID", "日期时间", "金额", "大类", "小类", "必要性", "大额单次支出", "备注"];
+  const rows = currentAccount().account.records.map((record) => [record.id, record.date, record.amount, record.major, record.minor, record.necessity, record.oneTime ? "是" : "否", record.note]);
+  const content = `\uFEFF${[headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
+  await deliverFile(new File([content], `情绪稳定-${localMonth()}.csv`, { type: "text/csv;charset=utf-8" }), "情绪稳定 CSV 账本");
+}
+function normalizeBudgets(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const normalized = {};
+  const legacy = Object.keys(value).some((key) => CATEGORIES[key] && Number.isFinite(Number(value[key])));
+  const sources = legacy ? { [selectedMonth]: value } : value;
+  Object.entries(sources).forEach(([month, categories]) => {
+    if (!/^\d{4}-\d{2}$/.test(month) || !categories || typeof categories !== "object") return;
+    normalized[month] = {};
+    Object.keys(CATEGORIES).forEach((category) => {
+      const amount = Number(categories[category]);
+      if (Number.isFinite(amount) && amount >= 0) normalized[month][category] = amount;
+    });
+  });
+  return normalized;
+}
+function normalizeBackup(parsed) {
+  const source = parsed?.format === "emotion-ledger-backup" ? parsed.account : parsed;
+  if (!source || !Array.isArray(source.records)) throw new Error("这不是有效的账本备份文件");
+  const records = source.records.map((record, index) => {
+    const amount = Number(record?.amount);
+    if (!record || typeof record.date !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(record.date) || !(amount > 0) || typeof record.major !== "string") throw new Error(`第 ${index + 1} 条记录格式不正确`);
+    const seed = `${record.date}|${amount}|${record.major}|${record.minor || ""}|${record.note || ""}`;
+    let hash = 2166136261; for (const char of seed) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); }
+    return { id: String(record.id || `import-${hash >>> 0}`), date: record.date.slice(0, 16), amount, major: record.major.slice(0, 20), minor: String(record.minor || "未分类").slice(0, 20), necessity: ["必要", "可减少", "非必要"].includes(record.necessity) ? record.necessity : "必要", oneTime: Boolean(record.oneTime), note: String(record.note || "").slice(0, 80) };
+  });
+  return { records, budgets: normalizeBudgets(source.budgets) };
+}
+function parseCsv(text) {
+  const rows = []; let row = [], field = "", quoted = false;
+  const source = text.replace(/^\uFEFF/, "");
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quoted) {
+      if (char === '"' && source[index + 1] === '"') { field += '"'; index += 1; }
+      else if (char === '"') quoted = false;
+      else field += char;
+    } else if (char === '"') quoted = true;
+    else if (char === ",") { row.push(field); field = ""; }
+    else if (char === "\n") { row.push(field.replace(/\r$/, "")); rows.push(row); row = []; field = ""; }
+    else field += char;
+  }
+  if (field || row.length) { row.push(field.replace(/\r$/, "")); rows.push(row); }
+  if (quoted) throw new Error("CSV 文件中的引号不完整");
+  return rows;
+}
+function normalizeCsv(text) {
+  const rows = parseCsv(text).filter((row) => row.some((cell) => cell.trim()));
+  if (rows.length < 1) throw new Error("CSV 文件没有内容");
+  const headers = rows.shift().map((header) => header.trim());
+  const position = (name) => headers.indexOf(name);
+  if (["日期时间", "金额", "大类"].some((name) => position(name) < 0)) throw new Error("CSV 缺少日期时间、金额或大类列");
+  const records = rows.map((row) => ({ id: position("ID") >= 0 ? row[position("ID")] : "", date: row[position("日期时间")], amount: row[position("金额")], major: row[position("大类")], minor: position("小类") >= 0 ? row[position("小类")] : "未分类", necessity: position("必要性") >= 0 ? row[position("必要性")] : "必要", oneTime: position("大额单次支出") >= 0 && ["是", "true", "1"].includes(String(row[position("大额单次支出")]).toLowerCase()), note: position("备注") >= 0 ? row[position("备注")] : "" }));
+  return normalizeBackup({ records, budgets: {} });
+}
+async function importBackup() {
+  const file = $("#importFileInput").files[0];
+  if (!file) return showToast("请先选择备份文件");
+  try {
+    const text = await file.text();
+    const isCsv = /\.csv$/i.test(file.name) || file.type.includes("csv") || !text.trimStart().startsWith("{");
+    const incoming = isCsv ? normalizeCsv(text) : normalizeBackup(JSON.parse(text));
+    const mode = $("#importModeInput").value;
+    if (mode === "replace" && !confirm("替换会覆盖当前账本，确定继续吗？")) return;
+    const { store, account } = currentAccount();
+    if (mode === "replace") {
+      store[ACCOUNT] = { records: incoming.records, budgets: isCsv ? account.budgets : incoming.budgets };
+    } else {
+      const recordsById = new Map(account.records.map((record) => [String(record.id), record]));
+      incoming.records.forEach((record) => recordsById.set(String(record.id), record));
+      account.records = [...recordsById.values()];
+      Object.entries(incoming.budgets).forEach(([month, categories]) => { account.budgets[month] = { ...(account.budgets[month] || {}), ...categories }; });
+    }
+    persist(store); $("#dataDialog").close(); renderActiveView(); showToast(`成功导入 ${incoming.records.length} 条记录`);
+  } catch (error) { showToast(error.message || "备份文件无法读取"); }
+}
+function openDataDialog() { $("#importFileInput").value = ""; $("#dataDialog").showModal(); }
 document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
 $("#monthInput").addEventListener("change", (event) => { selectedMonth = event.target.value || localMonth(); renderActiveView(); });
-$("#openAddBtn").addEventListener("click", openExpenseDialog); $("#closeExpenseBtn").addEventListener("click", () => $("#expenseDialog").close()); $("#exportBtn").addEventListener("click", exportBackup);
+$("#openAddBtn").addEventListener("click", openExpenseDialog); $("#closeExpenseBtn").addEventListener("click", () => $("#expenseDialog").close());
+$("#exportBtn").addEventListener("click", openDataDialog); $("#mobileDataBtn").addEventListener("click", openDataDialog); $("#closeDataBtn").addEventListener("click", () => $("#dataDialog").close());
+$("#downloadCsvBtn").addEventListener("click", exportCsv); $("#downloadBackupBtn").addEventListener("click", exportBackup); $("#importBackupBtn").addEventListener("click", importBackup);
 $("#majorInput").innerHTML = Object.keys(CATEGORIES).map((category) => `<option>${category}</option>`).join(""); $("#majorInput").addEventListener("change", fillMinorCategories); $("#minorInput").addEventListener("change", (event) => $("#customMinorField").classList.toggle("hidden", event.target.value !== "__custom"));
 $("#expenseForm").addEventListener("submit", (event) => { event.preventDefault(); const form = new FormData(event.currentTarget), amount = Number(form.get("amount")); if (!(amount > 0)) return showToast("请输入有效金额"); const minor = form.get("minor") === "__custom" ? $("#minorCustomInput").value.trim() : form.get("minor"); if (!minor) return showToast("请输入小类名称"); const { store, account } = currentAccount(); account.records.push({ id: crypto.randomUUID?.() || String(Date.now()), date: form.get("date"), amount, major: form.get("major"), minor, necessity: form.get("necessity"), oneTime: form.get("oneTime") === "on", note: form.get("note").trim() }); persist(store); event.currentTarget.reset(); fillMinorCategories(); $("#expenseDialog").close(); renderActiveView(); showToast("记录已保存"); });
 currentAccount(); fillMinorCategories(); setView("overview");
