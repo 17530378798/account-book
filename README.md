@@ -1,4 +1,4 @@
-# 禾账 Offline Ledger
+# 情绪稳定 Offline Ledger
 
 这是一个纯前端、可离线使用的个人记账 PWA。数据保存在当前浏览器的 `localStorage` 中，每个用户名拥有独立的记录和预算。
 
