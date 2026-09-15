@@ -179,4 +179,12 @@ $("#downloadCsvBtn").addEventListener("click", exportCsv); $("#downloadBackupBtn
 $("#majorInput").innerHTML = Object.keys(CATEGORIES).map((category) => `<option>${category}</option>`).join(""); $("#majorInput").addEventListener("change", fillMinorCategories); $("#minorInput").addEventListener("change", (event) => $("#customMinorField").classList.toggle("hidden", event.target.value !== "__custom"));
 $("#expenseForm").addEventListener("submit", (event) => { event.preventDefault(); const form = new FormData(event.currentTarget), amount = Number(form.get("amount")); if (!(amount > 0)) return showToast("请输入有效金额"); const minor = form.get("minor") === "__custom" ? $("#minorCustomInput").value.trim() : form.get("minor"); if (!minor) return showToast("请输入小类名称"); const { store, account } = currentAccount(); account.records.push({ id: crypto.randomUUID?.() || String(Date.now()), date: form.get("date"), amount, major: form.get("major"), minor, necessity: form.get("necessity"), oneTime: form.get("oneTime") === "on", note: form.get("note").trim() }); persist(store); event.currentTarget.reset(); fillMinorCategories(); $("#expenseDialog").close(); renderActiveView(); showToast("记录已保存"); });
 currentAccount(); fillMinorCategories(); setView("overview");
-if ("serviceWorker" in navigator && location.protocol.startsWith("http")) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", async () => {
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    const registration = await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
+    registration.update();
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") registration.update(); });
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController) location.reload(); });
+  });
+}
