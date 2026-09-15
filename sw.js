@@ -1,18 +1,26 @@
-const CACHE_NAME = "offline-ledger-v18";
+const CACHE_NAME = "offline-ledger-v19";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./manifest.webmanifest",
+  "./styles.css?v=19",
+  "./app.js?v=19",
+  "./manifest.webmanifest?v=19",
   "./icon-180.png",
   "./icon-192.png",
   "./icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await Promise.all(APP_SHELL.map(async (path) => {
+      const request = new Request(new URL(path, self.registration.scope), { cache: "reload" });
+      const response = await fetch(request);
+      if (!response.ok) throw new Error(`Unable to cache ${path}`);
+      await cache.put(request, response);
+    }));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", (event) => {
@@ -24,11 +32,22 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  event.respondWith(
-    fetch(event.request).then((response) => {
-      const copy = response.clone();
-      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+  event.respondWith((async () => {
+    try {
+      const response = await fetch(new Request(event.request, { cache: "no-store" }));
+      if (response.ok && !url.pathname.endsWith("/version.json")) {
+        const cache = await caches.open(CACHE_NAME);
+        const cacheKey = event.request.mode === "navigate" ? new URL("./index.html", self.registration.scope).href : event.request;
+        await cache.put(cacheKey, response.clone());
+      }
       return response;
-    }).catch(() => caches.match(event.request).then((cached) => cached || caches.match("./index.html")))
-  );
+    } catch {
+      const cached = await caches.match(event.request);
+      if (cached) return cached;
+      if (event.request.mode === "navigate") return caches.match(new URL("./index.html", self.registration.scope).href);
+      return Response.error();
+    }
+  })());
 });

@@ -1,6 +1,7 @@
 const STORAGE_KEY = "offline-ledger-users-v1";
 const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const THEME_KEY = "offline-ledger-theme-v1";
+const APP_VERSION = "19";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -61,6 +62,14 @@ function recordedDayAverage(records) {
 }
 function showToast(message) { const toast = $("#toast"); toast.textContent = message; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2000); }
 function savedTheme() { try { return localStorage.getItem(THEME_KEY); } catch { return "jade"; } }
+async function latestAppVersion() {
+  try {
+    const response = await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) return APP_VERSION;
+    const version = String((await response.json()).version || "");
+    return /^\d+$/.test(version) ? version : APP_VERSION;
+  } catch { return APP_VERSION; }
+}
 function applyTheme(theme) {
   const themes = ["jade", "apricot", "slate", "ocean", "lavender", "rose", "amber", "graphite"], selected = themes.includes(theme) ? theme : "jade";
   document.documentElement.dataset.theme = selected;
@@ -281,10 +290,14 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
       else $("#updateAppBtn").hidden = false;
     });
     $("#updateAppBtn").addEventListener("click", () => { if (hasPendingEdits()) showToast("请先保存正在编辑的内容，再更新应用"); else location.reload(); });
-    try {
-      const registration = await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
-      registration.update().catch(() => {});
-      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") registration.update().catch(() => {}); });
-    } catch { /* The ledger remains usable when offline or service workers are unavailable. */ }
+    const updateApp = async () => {
+      try {
+        const version = await latestAppVersion();
+        const registration = await navigator.serviceWorker.register(`sw.js?v=${version}`, { updateViaCache: "none" });
+        await registration.update().catch(() => {});
+      } catch { /* The ledger remains usable when offline or service workers are unavailable. */ }
+    };
+    await updateApp();
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") updateApp(); });
   });
 }
