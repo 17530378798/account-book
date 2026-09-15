@@ -1,4 +1,5 @@
 const STORAGE_KEY = "offline-ledger-users-v1";
+const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const THEME_KEY = "offline-ledger-theme-v1";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
@@ -13,18 +14,64 @@ const $ = (selector) => document.querySelector(selector);
 let selectedMonth = localMonth(); let activeView = "overview"; let editingRecordId = null;
 function localMonth() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`; }
 function localDateTime() { const now = new Date(); return new Date(now - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
-function readStore() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch { return {}; } }
-function currentAccount() { const store = readStore(); if (!store[ACCOUNT]) store[ACCOUNT] = { records: [], budgets: {}, deletedRecords: [] }; store[ACCOUNT].records ||= []; store[ACCOUNT].budgets ||= {}; store[ACCOUNT].deletedRecords ||= []; localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); return { store, account: store[ACCOUNT] }; }
-function persist(store) { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); }
+class LedgerStorageError extends Error {}
+function storageNotice(message) { const notice = $("#storageNotice"); if (notice) { notice.textContent = message; notice.hidden = !message; } }
+function isObject(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
+function parseStoredValue(key) {
+  let raw;
+  try { raw = localStorage.getItem(key); }
+  catch { throw new LedgerStorageError("无法读取设备存储，请检查浏览器权限；现有账本未被覆盖。"); }
+  if (raw === null) return { state: "missing" };
+  try {
+    const value = JSON.parse(raw);
+    if (!isObject(value) || !Object.values(value).every((account) => isObject(account) && Array.isArray(account.records) && account.records.every((record) => isObject(record) && typeof record.date === "string" && Number.isFinite(record.amount)) && (account.budgets === undefined || isObject(account.budgets)) && (account.deletedRecords === undefined || Array.isArray(account.deletedRecords)))) return { state: "invalid" };
+    return { state: "valid", value };
+  } catch { return { state: "invalid" }; }
+}
+function readStore() {
+  const primary = parseStoredValue(STORAGE_KEY);
+  if (primary.state === "valid") return primary.value;
+  const backup = parseStoredValue(BACKUP_STORAGE_KEY);
+  if (backup.state === "valid") {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(backup.value)); }
+    catch { storageNotice("已读取本机备份，但暂时无法修复主存储。请先导出完整备份。"); }
+    return backup.value;
+  }
+  if (primary.state === "missing" && backup.state === "missing") return {};
+  throw new LedgerStorageError("本机账本暂时无法读取，已停止写入以保护原数据。请勿清除网站数据。");
+}
+function currentAccount() { const store = readStore(); if (!store[ACCOUNT]) store[ACCOUNT] = { records: [], budgets: {}, deletedRecords: [] }; store[ACCOUNT].budgets ||= {}; store[ACCOUNT].deletedRecords ||= []; return { store, account: store[ACCOUNT] }; }
+function persist(store) {
+  const serialized = JSON.stringify(store);
+  try { localStorage.setItem(STORAGE_KEY, serialized); }
+  catch { throw new LedgerStorageError("保存失败，可能是存储空间不足或浏览器限制。请先导出备份，当前操作尚未保存。"); }
+  try { localStorage.setItem(BACKUP_STORAGE_KEY, serialized); storageNotice(""); }
+  catch { storageNotice("账本已保存，但本机备用副本未能更新。请导出完整备份。"); }
+}
+window.addEventListener("error", (event) => { if (event.error instanceof LedgerStorageError) { event.preventDefault(); storageNotice(event.error.message); alert(event.error.message); } });
 function money(value) { return `¥${Number(value || 0).toFixed(2)}`; }
 function monthText(value) { const [year, month] = value.split("-"); return `${year}年${Number(month)}月`; }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char])); }
 function monthRecords() { return currentAccount().account.records.filter((record) => record.date.slice(0, 7) === selectedMonth).sort((a, b) => b.date.localeCompare(a.date)); }
 function showToast(message) { const toast = $("#toast"); toast.textContent = message; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2000); }
-function applyTheme(theme) { const selected = ["jade", "apricot", "slate"].includes(theme) ? theme : "jade"; document.documentElement.dataset.theme = selected; localStorage.setItem(THEME_KEY, selected); document.querySelectorAll("[data-theme-choice]").forEach((button) => button.classList.toggle("selected", button.dataset.themeChoice === selected)); }
-function openThemeDialog() { applyTheme(localStorage.getItem(THEME_KEY)); $("#themeDialog").showModal(); }
+function savedTheme() { try { return localStorage.getItem(THEME_KEY); } catch { return "jade"; } }
+function applyTheme(theme) { const themes = ["jade", "apricot", "slate", "ocean", "lavender", "rose", "amber", "graphite"], selected = themes.includes(theme) ? theme : "jade"; document.documentElement.dataset.theme = selected; try { localStorage.setItem(THEME_KEY, selected); } catch { storageNotice("外观已切换，但设备未能保存偏好设置。"); } document.querySelectorAll("[data-theme-choice]").forEach((button) => { button.classList.toggle("selected", button.dataset.themeChoice === selected); button.setAttribute("aria-pressed", String(button.dataset.themeChoice === selected)); }); }
+function openThemeDialog() { $("#themeDialog").showModal(); }
 function setImportStatus(message, type = "show") { const element = $("#importStatus"); if (!element) return; element.textContent = message; element.className = `import-status ${type}`; }
-function setView(view) { activeView = view; $("#viewTitle").textContent = TITLES[view]; document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === view)); document.querySelectorAll(".view").forEach((section) => section.classList.toggle("active", section.id === `${view}View`)); renderActiveView(); window.scrollTo({ top: 0, behavior: "instant" }); }
+let viewScrollFrame;
+function setView(view) {
+  if (!Object.hasOwn(TITLES, view)) return;
+  activeView = view;
+  $("#viewTitle").textContent = TITLES[view];
+  document.querySelectorAll(".nav-item").forEach((button) => { button.classList.toggle("active", button.dataset.view === view); if (button.dataset.view === view) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current"); });
+  document.querySelectorAll(".view").forEach((section) => section.classList.toggle("active", section.id === `${view}View`));
+  renderActiveView();
+  const resetScroll = () => { $(".main").scrollTo({ top: 0, left: 0, behavior: "instant" }); window.scrollTo({ top: 0, left: 0, behavior: "instant" }); };
+  cancelAnimationFrame(viewScrollFrame);
+  resetScroll();
+  // Reset again after the new section has laid out, including iOS momentum scroll.
+  viewScrollFrame = requestAnimationFrame(resetScroll);
+}
 function renderActiveView() { $("#monthInput").value = selectedMonth; if (activeView === "overview") renderOverview(); if (activeView === "records") renderRecords(); if (activeView === "analysis") renderAnalysis(); if (activeView === "months") renderMonths(); }
 function renderOverview() {
   const records = monthRecords(), total = records.reduce((sum, record) => sum + record.amount, 0), dailyTotal = records.filter((record) => !record.oneTime).reduce((sum, record) => sum + record.amount, 0), necessary = records.filter((record) => record.necessity === "必要").reduce((sum, record) => sum + record.amount, 0), days = new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5)), 0).getDate();
@@ -33,7 +80,7 @@ function renderOverview() {
   bindRecordActions();
 }
 function recordCards(records) { if (!records.length) return `<div class="empty"><strong>这个月还没有记录</strong><span>点击“记一笔”开始使用</span></div>`; return `<div class="record-list">${records.map((record) => `<article class="record-row"><div class="record-main"><strong>${escapeHtml(record.major)} · ${escapeHtml(record.minor || "未分类")}</strong><small>${record.date.replace("T", " ")} · ${escapeHtml(record.necessity)}${record.oneTime ? " · 单次支出" : ""}</small>${record.note ? `<small>${escapeHtml(record.note)}</small>` : ""}</div><div class="record-side"><strong>${money(record.amount)}</strong>${record.id ? `<div class="record-actions"><button class="edit-btn" data-edit="${escapeHtml(record.id)}">编辑</button><button class="delete-btn" data-delete="${escapeHtml(record.id)}">删除</button></div>` : ""}</div></article>`).join("")}</div>`; }
-function bindRecordActions() { document.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openEditDialog(button.dataset.edit))); document.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteRecord(button.dataset.delete))); }
+function bindRecordActions() { document.querySelectorAll(".view.active [data-edit]").forEach((button) => button.addEventListener("click", () => openEditDialog(button.dataset.edit))); document.querySelectorAll(".view.active [data-delete]").forEach((button) => button.addEventListener("click", () => deleteRecord(button.dataset.delete))); }
 function renderRecords() { const records = monthRecords(), deletedCount = currentAccount().account.deletedRecords.length; $("#recordsView").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>${monthText(selectedMonth)}</h2><span class="muted">共 ${records.length} 笔</span></div><div class="panel-actions"><button class="ghost-btn" data-open-trash>最近删除${deletedCount ? ` (${deletedCount})` : ""}</button><button class="primary-btn" data-add-record>+ 记一笔</button></div></div>${recordCards(records)}</section>`; $("[data-add-record]")?.addEventListener("click", openExpenseDialog); $("[data-open-trash]")?.addEventListener("click", openTrashDialog); bindRecordActions(); }
 function dailyBarChart(records) {
   const days = new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5)), 0).getDate();
@@ -105,18 +152,27 @@ function normalizeBudgets(value) {
 function normalizeBackup(parsed) {
   const source = parsed?.format === "emotion-ledger-backup" ? parsed.account : parsed;
   if (!source || !Array.isArray(source.records)) throw new Error("这不是有效的账本备份文件");
-  const records = source.records.map((record, index) => {
+  const normalizeRecords = (items) => {
+  const occurrences = new Map(), ids = new Set();
+  return items.map((record, index) => {
     const amount = Number(String(record?.amount ?? "").replace(/[¥￥,\s]/g, ""));
-    if (!record || typeof record.date !== "string" || !(amount > 0) || typeof record.major !== "string") throw new Error(`第 ${index + 1} 条记录格式不正确`);
+    if (!record || typeof record.date !== "string" || !Number.isFinite(amount) || !(amount > 0) || typeof record.major !== "string") throw new Error(`第 ${index + 1} 条记录格式不正确`);
+    // Keep the first generated ID compatible with earlier CSV imports.
     const seed = `${record.date}|${amount}|${record.major}|${record.minor || ""}|${record.note || ""}`;
     let hash = 2166136261; for (const char of seed) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); }
+    const occurrence = (occurrences.get(hash) || 0) + 1; occurrences.set(hash, occurrence);
+    const id = String(record.id || `import-${hash >>> 0}${occurrence > 1 ? `-${occurrence}` : ""}`);
+    if (ids.has(id)) throw new Error(`第 ${index + 1} 条记录的 ID 重复，请检查备份文件`);
+    ids.add(id);
     const rawDate = String(record.date).trim().replace(/[/.]/g, "-").replace(/\s+/, "T");
     const dateMatch = rawDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:T(\d{1,2})(?::(\d{1,2}))?)?/);
     if (!dateMatch) throw new Error(`第 ${index + 1} 条记录日期格式不正确`);
     const normalizedDate = `${dateMatch[1]}-${String(dateMatch[2]).padStart(2, "0")}-${String(dateMatch[3]).padStart(2, "0")}T${String(dateMatch[4] || "00").padStart(2, "0")}:${String(dateMatch[5] || "00").padStart(2, "0")}`;
-    return { id: String(record.id || `import-${hash >>> 0}`), date: normalizedDate, amount, major: record.major.slice(0, 20), minor: String(record.minor || "未分类").slice(0, 20), necessity: ["必要", "可减少", "非必要"].includes(record.necessity) ? record.necessity : "必要", oneTime: Boolean(record.oneTime), note: String(record.note || "").slice(0, 80) };
+    return { id, date: normalizedDate, amount, major: record.major.slice(0, 20), minor: String(record.minor || "未分类").slice(0, 20), necessity: ["必要", "可减少", "非必要"].includes(record.necessity) ? record.necessity : "必要", oneTime: Boolean(record.oneTime), note: String(record.note || "").slice(0, 80), ...(typeof record.deletedAt === "string" ? { deletedAt: record.deletedAt } : {}) };
   });
-  return { records, budgets: normalizeBudgets(source.budgets) };
+  };
+  if (source.deletedRecords !== undefined && !Array.isArray(source.deletedRecords)) throw new Error("最近删除数据格式不正确");
+  return { records: normalizeRecords(source.records), budgets: normalizeBudgets(source.budgets), deletedRecords: source.deletedRecords === undefined ? undefined : normalizeRecords(source.deletedRecords) };
 }
 function parseCsv(text) {
   const rows = []; let row = [], field = "", quoted = false;
@@ -161,14 +217,17 @@ async function importBackup() {
     const { store, account } = currentAccount();
     let added = 0; let updated = 0;
     if (mode === "replace") {
-      store[ACCOUNT] = { records: incoming.records, budgets: isCsv ? account.budgets : incoming.budgets };
+      store[ACCOUNT] = { records: incoming.records, budgets: isCsv ? account.budgets : incoming.budgets, deletedRecords: incoming.deletedRecords ?? account.deletedRecords };
       added = incoming.records.length;
     } else {
       const recordsById = new Map(account.records.map((record) => [String(record.id), record]));
       incoming.records.forEach((record) => { if (recordsById.has(String(record.id))) updated += 1; else added += 1; recordsById.set(String(record.id), record); });
       account.records = [...recordsById.values()];
+      account.deletedRecords = [...new Map([...account.deletedRecords, ...(incoming.deletedRecords || [])].map((record) => [String(record.id), record])).values()];
       Object.entries(incoming.budgets).forEach(([month, categories]) => { account.budgets[month] = { ...(account.budgets[month] || {}), ...categories }; });
     }
+    const activeIds = new Set(store[ACCOUNT].records.map((record) => String(record.id)));
+    store[ACCOUNT].deletedRecords = store[ACCOUNT].deletedRecords.filter((record) => !activeIds.has(String(record.id)));
     persist(store);
     const latest = incoming.records.map((record) => record.date.slice(0, 7)).sort().pop();
     if (latest) selectedMonth = latest;
@@ -190,13 +249,24 @@ $("#themeBtn").addEventListener("click", openThemeDialog); $("#mobileThemeBtn").
 $("#downloadCsvBtn").addEventListener("click", exportCsv); $("#downloadBackupBtn").addEventListener("click", exportBackup); $("#importBackupBtn").addEventListener("click", importBackup);
 $("#majorInput").innerHTML = Object.keys(CATEGORIES).map((category) => `<option>${category}</option>`).join(""); $("#majorInput").addEventListener("change", fillMinorCategories); $("#minorInput").addEventListener("change", (event) => $("#customMinorField").classList.toggle("hidden", event.target.value !== "__custom"));
 $("#expenseForm").addEventListener("submit", (event) => { event.preventDefault(); const form = new FormData(event.currentTarget), amount = Number(form.get("amount")); if (!(amount > 0)) return showToast("请输入有效金额"); const minor = form.get("minor") === "__custom" ? $("#minorCustomInput").value.trim() : form.get("minor"); if (!minor) return showToast("请输入小类名称"); const { store, account } = currentAccount(); const record = { id: editingRecordId || crypto.randomUUID?.() || String(Date.now()), date: form.get("date"), amount, major: form.get("major"), minor, necessity: form.get("necessity"), oneTime: form.get("oneTime") === "on", note: form.get("note").trim() }; const editIndex = editingRecordId ? account.records.findIndex((item) => String(item.id) === editingRecordId) : -1; if (editIndex >= 0) account.records[editIndex] = record; else account.records.push(record); const wasEditing = editIndex >= 0; persist(store); resetExpenseDialog(); $("#expenseDialog").close(); renderActiveView(); showToast(wasEditing ? "记录已更新" : "记录已保存"); });
-applyTheme(localStorage.getItem(THEME_KEY)); currentAccount(); fillMinorCategories(); setView("overview");
+applyTheme(savedTheme()); fillMinorCategories();
+try { const { store } = currentAccount(); setView("overview"); persist(store); }
+catch (error) { if (error instanceof LedgerStorageError) storageNotice(error.message); else throw error; }
+if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   window.addEventListener("load", async () => {
     const hadController = Boolean(navigator.serviceWorker.controller);
-    const registration = await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
-    registration.update();
-    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") registration.update(); });
-    navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController) location.reload(); });
+    const hasPendingEdits = () => Boolean(document.querySelector("dialog[open]")) || [...document.querySelectorAll("[data-budget]")].some((input) => input.value !== input.defaultValue) || document.activeElement?.matches("input, textarea, select");
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController) return;
+      if (!hasPendingEdits()) location.reload();
+      else $("#updateAppBtn").hidden = false;
+    });
+    $("#updateAppBtn").addEventListener("click", () => { if (hasPendingEdits()) showToast("请先保存正在编辑的内容，再更新应用"); else location.reload(); });
+    try {
+      const registration = await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
+      registration.update().catch(() => {});
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") registration.update().catch(() => {}); });
+    } catch { /* The ledger remains usable when offline or service workers are unavailable. */ }
   });
 }

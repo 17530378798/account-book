@@ -27,6 +27,8 @@
       <div class="sidebar-foot"><button id="themeBtn" class="ghost-btn">外观主题</button><button id="exportBtn" class="ghost-btn">备份与恢复</button></div>
     </aside>
     <main class="main">
+      <p id="storageNotice" class="storage-notice" role="alert" hidden></p>
+      <button id="updateAppBtn" class="ghost-btn" hidden>新版本已就绪，保存后点击更新</button>
       <header class="topbar">
         <div class="title-row"><div><small class="mobile-brand">情绪稳定</small><h1 id="viewTitle">月度总览</h1></div><div class="mobile-title-actions"><button id="mobileThemeBtn" class="ghost-btn mobile-data-btn">外观</button><button id="mobileDataBtn" class="ghost-btn mobile-data-btn">备份</button></div></div>
         <div class="top-actions"><input id="monthInput" class="month-picker" type="month" aria-label="选择月份"><button id="openAddBtn" class="primary-btn">+ 记一笔</button></div>
@@ -54,6 +56,11 @@
         <button class="theme-card" data-theme-choice="jade"><span class="theme-preview jade-preview"><i></i><i></i><i></i></span><strong>深翠质感</strong><small>清晰、沉稳、有层次</small></button>
         <button class="theme-card" data-theme-choice="apricot"><span class="theme-preview apricot-preview"><i></i><i></i><i></i></span><strong>暖杏奶咖</strong><small>温暖、柔和、生活感</small></button>
         <button class="theme-card" data-theme-choice="slate"><span class="theme-preview slate-preview"><i></i><i></i><i></i></span><strong>静谧蓝灰</strong><small>克制、干净、现代感</small></button>
+        <button class="theme-card" data-theme-choice="ocean"><span class="theme-preview ocean-preview"><i></i><i></i><i></i></span><strong>深海蔚蓝</strong><small>清爽、通透、专注感</small></button>
+        <button class="theme-card" data-theme-choice="lavender"><span class="theme-preview lavender-preview"><i></i><i></i><i></i></span><strong>雾紫薰衣草</strong><small>细腻、舒缓、轻盈感</small></button>
+        <button class="theme-card" data-theme-choice="rose"><span class="theme-preview rose-preview"><i></i><i></i><i></i></span><strong>豆沙玫瑰</strong><small>柔美、温润、有质感</small></button>
+        <button class="theme-card" data-theme-choice="amber"><span class="theme-preview amber-preview"><i></i><i></i><i></i></span><strong>琥珀暖阳</strong><small>明亮、活力、温暖感</small></button>
+        <button class="theme-card" data-theme-choice="graphite"><span class="theme-preview graphite-preview"><i></i><i></i><i></i></span><strong>石墨极简</strong><small>中性、利落、耐看</small></button>
       </div>
     </div>
   </dialog>
@@ -68,7 +75,7 @@
       <div class="dialog-head"><h2>备份与恢复</h2><button id="closeDataBtn" type="button" class="ghost-btn">关闭</button></div>
       <section class="data-section">
         <h3>导出账本</h3>
-        <p>CSV 可用 Excel 或 Numbers 打开；JSON 会同时保存记录和分类预算。</p>
+        <p>CSV 可用 Excel 或 Numbers 打开；JSON 会同时保存记录、分类预算和最近删除。应用更新会保留本机账本；换手机或清除网站数据前，请先导出完整备份。</p>
         <div class="export-actions"><button id="downloadCsvBtn" type="button" class="primary-btn wide-btn">导出 CSV</button><button id="downloadBackupBtn" type="button" class="ghost-btn wide-btn">完整备份 JSON</button></div>
       </section>
       <section class="data-section">
