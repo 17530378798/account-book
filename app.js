@@ -1,7 +1,7 @@
 const STORAGE_KEY = "offline-ledger-users-v1";
 const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const THEME_KEY = "offline-ledger-theme-v1";
-const APP_VERSION = "21";
+const APP_VERSION = "22";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -139,8 +139,13 @@ function categoryTrendChart(records) {
   return `<div class="trend-chart" role="img" aria-label="本月支出最高五类的每日折线趋势"><svg viewBox="0 0 360 180" preserveAspectRatio="none" aria-hidden="true"><g class="trend-grid">${grid}</g><g class="trend-lines">${lines}</g></svg></div><div class="trend-axis">${ticks.map((day) => `<span>${day}日</span>`).join("")}</div><div class="trend-legend">${series.map((item) => `<span><i class="dot" style="background:${item.color}"></i>${escapeHtml(item.category)} <strong>${money(item.total)}</strong></span>`).join("")}</div>`;
 }
 function budgetExecutionReport(records, budgets) {
-  const budget = Object.values(budgets).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0), spent = records.reduce((sum, record) => sum + (Number(record.amount) || 0), 0), remaining = budget - spent, percent = budget ? spent / budget * 100 : 0, over = budget > 0 && remaining < 0;
-  return `<div class="report-metrics"><span><small>预算</small><strong>${money(budget)}</strong></span><span><small>已支出</small><strong>${money(spent)}</strong></span><span><small>${budget ? (over ? "已超出" : "剩余") : "待设置"}</small><strong class="${over ? "over-budget" : ""}">${budget ? money(Math.abs(remaining)) : "--"}</strong></span></div><div class="execution-meter${over ? " is-over" : ""}"><i style="width:${budget ? Math.min(100, percent) : 0}%"></i></div><p class="execution-note">${budget ? `${over ? "预算已超出" : "预算已使用"} ${Math.round(percent)}%` : "本月尚未设置分类预算"}</p>`;
+  const spentByCategory = new Map(categoryTotals(records).map((item) => [item.category, item.total]));
+  const categories = [...new Set([...Object.keys(CATEGORIES), ...Object.keys(budgets), ...spentByCategory.keys()])];
+  const rows = categories.map((category, index) => {
+    const budget = Math.max(0, Number(budgets[category]) || 0), spent = spentByCategory.get(category) || 0, remaining = budget - spent, percent = budget ? spent / budget * 100 : 0, over = budget > 0 && remaining < 0;
+    return { category, budget, spent, remaining, percent, over, color: COLORS[index % COLORS.length] };
+  }).sort((a, b) => Number(Boolean(b.budget)) - Number(Boolean(a.budget)) || Number(b.over) - Number(a.over) || b.spent - a.spent || a.category.localeCompare(b.category, "zh-CN"));
+  return `<div class="execution-list">${rows.map((item) => `<article class="execution-row${item.over ? " is-over" : ""}"><div class="execution-head"><span class="execution-category"><i class="dot" style="background:${item.color}"></i><strong>${escapeHtml(item.category)}</strong></span><span class="execution-state">${item.budget ? (item.over ? `超支 ${money(Math.abs(item.remaining))}` : `剩余 ${money(item.remaining)}`) : "未设置预算"}</span></div><div class="execution-values"><span>预算 ${item.budget ? money(item.budget) : "--"}</span><span>支出 ${money(item.spent)}</span><strong>${item.budget ? `${Math.round(item.percent)}%` : "--"}</strong></div><div class="execution-meter${item.over ? " is-over" : ""}"><i style="width:${item.budget ? Math.min(100, item.percent) : 0}%"></i></div></article>`).join("")}</div>`;
 }
 function necessityPieChart(records) {
   const definitions = [{ category: "必要", color: "#1f8f78" }, { category: "可减少", color: "#e09f3e" }, { category: "非必要", color: "#d66565" }];
