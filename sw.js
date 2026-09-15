@@ -1,10 +1,10 @@
-const CACHE_NAME = "offline-ledger-v23";
+const CACHE_NAME = "offline-ledger-v24";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=23",
-  "./app.js?v=23",
-  "./manifest.webmanifest?v=23",
+  "./styles.css?v=24",
+  "./app.js?v=24",
+  "./manifest.webmanifest?v=24",
   "./icon-180.png",
   "./icon-192.png",
   "./icon-512.png"

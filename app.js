@@ -1,7 +1,7 @@
 const STORAGE_KEY = "offline-ledger-users-v1";
 const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const THEME_KEY = "offline-ledger-theme-v1";
-const APP_VERSION = "23";
+const APP_VERSION = "24";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -67,7 +67,7 @@ function calendarHeatmap(records) {
   const maximum = Math.max(...totals, 0), today = localDateTime().slice(0, 10);
   const blanks = Array.from({ length: leading }, () => `<span class="heatmap-blank" aria-hidden="true"></span>`).join("");
   const cells = totals.map((total, index) => { const day = index + 1, date = `${selectedMonth}-${String(day).padStart(2, "0")}`, intensity = maximum ? Math.ceil(total / maximum * 5) : 0; return `<button type="button" class="heatmap-day level-${intensity}${date === today ? " is-today" : ""}" data-heatmap-day="${day}" data-heatmap-total="${total}" aria-label="${monthText(selectedMonth)}${day}日支出${money(total)}"><span>${day}</span><small>${total ? money(total) : ""}</small></button>`; }).join("");
-  return `<section class="panel heatmap-panel"><div class="panel-head"><div><h2>每日消费日历</h2><span class="muted">颜色越深，消费越高</span></div><span class="heatmap-total">${monthText(selectedMonth)}</span></div><div class="heatmap-weekdays" aria-hidden="true"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div class="heatmap-grid">${blanks}${cells}</div><div class="heatmap-scale"><span>少</span>${[0, 1, 2, 3, 4, 5].map((level) => `<i class="level-${level}"></i>`).join("")}<span>多</span></div></section>`;
+  return `<section class="panel heatmap-panel"><div class="panel-head"><div><h2>每日消费日历热力图</h2><span class="muted">本月每日支出分布</span></div><span class="heatmap-total">${monthText(selectedMonth)}</span></div><div class="heatmap-weekdays" aria-hidden="true"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div class="heatmap-grid">${blanks}${cells}</div><div class="heatmap-scale"><span>少</span>${[0, 1, 2, 3, 4, 5].map((level) => `<i class="level-${level}"></i>`).join("")}<span>多</span></div></section>`;
 }
 function showToast(message) { const toast = $("#toast"); toast.textContent = message; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2000); }
 function savedTheme() { try { return localStorage.getItem(THEME_KEY); } catch { return "jade"; } }
