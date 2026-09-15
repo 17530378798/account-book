@@ -9,8 +9,8 @@
   <meta name="apple-mobile-web-app-title" content="情绪稳定">
   <link rel="icon" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-180.png">
-  <link rel="manifest" href="manifest.webmanifest?v=19">
-  <link rel="stylesheet" href="styles.css?v=19">
+  <link rel="manifest" href="manifest.webmanifest?v=21">
+  <link rel="stylesheet" href="styles.css?v=21">
   <title>情绪稳定</title>
 </head>
 <body>
@@ -46,7 +46,7 @@
       <div class="field"><label for="necessityInput">必要性</label><select id="necessityInput" name="necessity"><option>必要</option><option>可减少</option><option>非必要</option></select></div>
       <label class="check-row"><input name="oneTime" type="checkbox"><span>大额单次支出（不计入日均）</span></label>
       <div class="field"><label for="noteInput">备注</label><textarea id="noteInput" name="note" rows="2" maxlength="80" placeholder="可选"></textarea></div>
-      <div class="dialog-actions"><button class="primary-btn save-btn" type="submit">保存记录</button></div>
+      <div class="dialog-actions"><button class="primary-btn save-btn" type="submit" data-save-action="close">保存记录</button><button id="saveContinueBtn" class="ghost-btn continue-btn" type="submit" data-save-action="continue">保存并继续</button></div>
     </form>
   </dialog>
   <dialog id="themeDialog" class="theme-dialog">
@@ -88,6 +88,6 @@
     </div>
   </dialog>
   <div id="toast" class="toast" role="status"></div>
-  <script src="app.js?v=19"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

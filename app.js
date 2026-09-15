@@ -1,7 +1,7 @@
 const STORAGE_KEY = "offline-ledger-users-v1";
 const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const THEME_KEY = "offline-ledger-theme-v1";
-const APP_VERSION = "19";
+const APP_VERSION = "21";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -112,26 +112,52 @@ function dailyBarChart(records) {
   const total = totals.reduce((sum, amount) => sum + amount, 0), peakDay = maximum ? totals.indexOf(maximum) + 1 : 0;
   return `<div class="chart-summary"><span>本月合计 <strong>${money(total)}</strong></span><span>最高单日 <strong>${maximum ? `${peakDay}日 · ${money(maximum)}` : "暂无"}</strong></span></div><div class="chart-scroll"><div class="bars daily-bars${maximum ? "" : " is-empty"}">${totals.map((amount, index) => { const day = index + 1, showLabel = day === 1 || day === days || day % 5 === 0; return `<button type="button" class="bar-wrap" data-chart-day="${day}" data-chart-total="${amount}" aria-label="${day}日支出${money(amount)}"><span class="bar-track"><i class="bar${amount ? "" : " empty"}" style="--bar-height:${maximum ? Math.max(4, amount / maximum * 100) : 0}%"></i></span><span class="bar-day">${showLabel ? day : ""}</span></button>`; }).join("")}${maximum ? "" : `<div class="chart-empty">本月还没有支出记录</div>`}</div></div>`;
 }
-function categoryPieChart(records) {
+function categoryTotals(records) {
   const grouped = new Map();
   records.forEach((record) => { const category = String(record.major || "未分类").trim() || "未分类"; grouped.set(category, (grouped.get(category) || 0) + (Number(record.amount) || 0)); });
-  const totals = [...grouped.entries()].map(([category, amount], index) => ({ category, color: COLORS[index % COLORS.length], total: amount })).filter((item) => item.total > 0).sort((a, b) => b.total - a.total);
+  return [...grouped.entries()].map(([category, amount]) => ({ category, total: amount })).filter((item) => item.total > 0).sort((a, b) => b.total - a.total).map((item, index) => ({ ...item, color: COLORS[index % COLORS.length] }));
+}
+function donutChart(items, emptyMessage, label) {
+  const totals = items.filter((item) => item.total > 0);
   const total = totals.reduce((sum, item) => sum + item.total, 0);
   let angle = 0;
   const gradient = totals.map((item) => { const start = angle; angle += item.total / total * 360; return `${item.color} ${start}deg ${angle}deg`; }).join(", ") || "#e7eeeb 0deg 360deg";
-  return `<div class="donut-layout"><div class="donut${total ? "" : " is-empty"}" style="background:conic-gradient(${gradient})"><span>${money(total)}</span></div><div class="legend">${totals.length ? totals.map((item) => `<div class="legend-row"><span class="legend-label"><i class="dot" style="background:${item.color}"></i>${escapeHtml(item.category)}</span><strong>${money(item.total)} · ${Math.round(item.total / total * 100)}%</strong></div>`).join("") : `<span class="muted">本月还没有可分析的分类支出</span>`}</div></div>`;
+  return `<div class="donut-layout"><div class="donut${total ? "" : " is-empty"}" role="img" aria-label="${escapeHtml(label)}，总额${money(total)}" style="background:conic-gradient(${gradient})"><span>${money(total)}</span></div><div class="legend">${totals.length ? totals.map((item) => `<div class="legend-row"><span class="legend-label"><i class="dot" style="background:${item.color}"></i>${escapeHtml(item.category)}</span><strong>${money(item.total)} · ${Math.round(item.total / total * 100)}%</strong></div>`).join("") : `<span class="muted">${escapeHtml(emptyMessage)}</span>`}</div></div>`;
+}
+function categoryPieChart(records) { return donutChart(categoryTotals(records), "本月还没有可分析的分类支出", "分类支出占比"); }
+function categoryTrendChart(records) {
+  const days = new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5)), 0).getDate(), categories = categoryTotals(records).slice(0, 5);
+  if (!categories.length) return `<div class="report-empty">本月还没有分类趋势数据</div>`;
+  const series = categories.map((item) => {
+    const totals = Array.from({ length: days }, () => 0);
+    records.filter((record) => String(record.major || "未分类").trim() === item.category).forEach((record) => { const day = Number(record.date.slice(8, 10)); if (day >= 1 && day <= days) totals[day - 1] += Number(record.amount) || 0; });
+    return { ...item, totals };
+  });
+  const maximum = Math.max(...series.flatMap((item) => item.totals), 0), ticks = [1, 5, 10, 15, 20, 25, days].filter((day, index, list) => day <= days && list.indexOf(day) === index);
+  const grid = [10, 50, 90, 130, 170].map((y) => `<line x1="0" y1="${y}" x2="360" y2="${y}"></line>`).join("");
+  const lines = series.map((item) => `<polyline aria-label="${escapeHtml(item.category)}" points="${item.totals.map((amount, index) => `${index / Math.max(1, days - 1) * 360},${170 - amount / maximum * 160}`).join(" ")}" style="--series-color:${item.color}"></polyline>`).join("");
+  return `<div class="trend-chart" role="img" aria-label="本月支出最高五类的每日折线趋势"><svg viewBox="0 0 360 180" preserveAspectRatio="none" aria-hidden="true"><g class="trend-grid">${grid}</g><g class="trend-lines">${lines}</g></svg></div><div class="trend-axis">${ticks.map((day) => `<span>${day}日</span>`).join("")}</div><div class="trend-legend">${series.map((item) => `<span><i class="dot" style="background:${item.color}"></i>${escapeHtml(item.category)} <strong>${money(item.total)}</strong></span>`).join("")}</div>`;
+}
+function budgetExecutionReport(records, budgets) {
+  const budget = Object.values(budgets).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0), spent = records.reduce((sum, record) => sum + (Number(record.amount) || 0), 0), remaining = budget - spent, percent = budget ? spent / budget * 100 : 0, over = budget > 0 && remaining < 0;
+  return `<div class="report-metrics"><span><small>预算</small><strong>${money(budget)}</strong></span><span><small>已支出</small><strong>${money(spent)}</strong></span><span><small>${budget ? (over ? "已超出" : "剩余") : "待设置"}</small><strong class="${over ? "over-budget" : ""}">${budget ? money(Math.abs(remaining)) : "--"}</strong></span></div><div class="execution-meter${over ? " is-over" : ""}"><i style="width:${budget ? Math.min(100, percent) : 0}%"></i></div><p class="execution-note">${budget ? `${over ? "预算已超出" : "预算已使用"} ${Math.round(percent)}%` : "本月尚未设置分类预算"}</p>`;
+}
+function necessityPieChart(records) {
+  const definitions = [{ category: "必要", color: "#1f8f78" }, { category: "可减少", color: "#e09f3e" }, { category: "非必要", color: "#d66565" }];
+  const items = definitions.map((item) => ({ ...item, total: records.filter((record) => record.necessity === item.category).reduce((sum, record) => sum + (Number(record.amount) || 0), 0) }));
+  return donutChart(items, "本月还没有必要性数据", "支出必要性占比");
 }
 function renderAnalysis() {
   const records = monthRecords(), total = records.reduce((sum, record) => sum + record.amount, 0), { account } = currentAccount(); account.budgets[selectedMonth] ||= {};
-  $("#analysisView").innerHTML = `<div class="analysis-charts"><section class="panel"><div class="panel-head"><div><h2>每日支出</h2><span class="muted">${monthText(selectedMonth)}每日金额</span></div></div>${dailyBarChart(records)}</section><section class="panel"><div class="panel-head"><div><h2>分类占比</h2><span class="muted">每一类支出占比</span></div></div>${categoryPieChart(records)}</section></div><section class="panel budget-panel"><div class="panel-head"><div><h2>分类预算</h2><span class="muted">${monthText(selectedMonth)}</span></div><strong>${money(total)}</strong></div><div class="category-grid">${Object.keys(CATEGORIES).map((category, index) => { const spent = records.filter((record) => record.major === category).reduce((sum, record) => sum + record.amount, 0), budget = Number(account.budgets[selectedMonth][category] || 0), percent = budget ? Math.min(100, spent / budget * 100) : 0; return `<article class="category-card"><div class="category-title"><span class="dot" style="background:${COLORS[index]}"></span><h3>${category}</h3><strong>${money(spent)}</strong></div><div class="progress"><i style="width:${percent}%"></i></div><div class="budget-row"><input type="number" inputmode="decimal" min="0" step="0.01" value="${budget || ""}" placeholder="设置月预算" data-budget="${category}"><button class="ghost-btn" data-save-budget="${category}">保存</button></div></article>`; }).join("")}</div></section>`;
+  $("#analysisView").innerHTML = `<div class="analysis-charts"><section class="panel"><div class="panel-head"><div><h2>每日支出</h2><span class="muted">${monthText(selectedMonth)}每日金额</span></div></div>${dailyBarChart(records)}</section><section class="panel"><div class="panel-head"><div><h2>分类占比</h2><span class="muted">每一类支出占比</span></div></div>${categoryPieChart(records)}</section></div><section class="panel report-panel"><div class="panel-head"><div><h2>分类趋势</h2><span class="muted">支出最高的 5 类每日变化</span></div></div>${categoryTrendChart(records)}</section><div class="analysis-charts report-row"><section class="panel"><div class="panel-head"><div><h2>预算执行</h2><span class="muted">${monthText(selectedMonth)}预算使用情况</span></div></div>${budgetExecutionReport(records, account.budgets[selectedMonth])}</section><section class="panel"><div class="panel-head"><div><h2>必要性占比</h2><span class="muted">必要、可减少与非必要</span></div></div>${necessityPieChart(records)}</section></div><section class="panel budget-panel"><div class="panel-head"><div><h2>分类预算</h2><span class="muted">${monthText(selectedMonth)}</span></div><strong>${money(total)}</strong></div><div class="category-grid">${Object.keys(CATEGORIES).map((category, index) => { const spent = records.filter((record) => record.major === category).reduce((sum, record) => sum + record.amount, 0), budget = Number(account.budgets[selectedMonth][category] || 0), percent = budget ? Math.min(100, spent / budget * 100) : 0; return `<article class="category-card"><div class="category-title"><span class="dot" style="background:${COLORS[index]}"></span><h3>${category}</h3><strong>${money(spent)}</strong></div><div class="progress"><i style="width:${percent}%"></i></div><div class="budget-row"><input type="number" inputmode="decimal" min="0" step="0.01" value="${budget || ""}" placeholder="设置月预算" data-budget="${category}"><button class="ghost-btn" data-save-budget="${category}">保存</button></div></article>`; }).join("")}</div></section>`;
   document.querySelectorAll("[data-chart-day]").forEach((button) => button.addEventListener("click", () => showToast(`${button.dataset.chartDay}日支出 ${money(button.dataset.chartTotal)}`)));
   document.querySelectorAll("[data-save-budget]").forEach((button) => button.addEventListener("click", () => saveBudget(button.dataset.saveBudget)));
 }
 function renderMonths() { const records = currentAccount().account.records, months = [...new Set(records.map((record) => record.date.slice(0, 7)).concat(selectedMonth))].sort().reverse(); $("#monthsView").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>月份归档</h2><span class="muted">点击月份查看详情</span></div></div><div class="month-grid">${months.map((value) => { const list = records.filter((record) => record.date.slice(0, 7) === value), total = list.reduce((sum, record) => sum + record.amount, 0), necessary = list.filter((record) => record.necessity === "必要").reduce((sum, record) => sum + record.amount, 0); return `<button class="month-card${value === selectedMonth ? " selected" : ""}" data-month="${value}"><span>${monthText(value)}</span><strong>${money(total)}</strong><small>${list.length} 笔 · 必要支出 ${total ? Math.round(necessary / total * 100) : 0}%</small></button>`; }).join("")}</div></section>`; document.querySelectorAll("[data-month]").forEach((button) => button.addEventListener("click", () => { selectedMonth = button.dataset.month; setView("overview"); })); }
 function fillMinorCategories() { const major = $("#majorInput").value; $("#minorInput").innerHTML = CATEGORIES[major].map((minor) => `<option>${minor}</option>`).join("") + `<option value="__custom">自定义...</option>`; $("#customMinorField").classList.add("hidden"); }
-function resetExpenseDialog() { editingRecordId = null; $("#expenseDialogTitle").textContent = "新增支出"; $("#expenseForm").reset(); fillMinorCategories(); }
+function resetExpenseDialog() { editingRecordId = null; $("#expenseDialogTitle").textContent = "新增支出"; $("#saveContinueBtn").hidden = false; $("#expenseForm").reset(); fillMinorCategories(); }
 function openExpenseDialog() { resetExpenseDialog(); $("#dateInput").value = localDateTime(); $("#expenseDialog").showModal(); setTimeout(() => $("#amountInput").focus(), 100); }
-function openEditDialog(id) { const record = currentAccount().account.records.find((item) => String(item.id) === String(id)); if (!record) return; editingRecordId = String(id); $("#expenseDialogTitle").textContent = "编辑支出"; $("#dateInput").value = record.date; $("#amountInput").value = record.amount; $("#majorInput").value = record.major; fillMinorCategories(); if (CATEGORIES[record.major]?.includes(record.minor)) $("#minorInput").value = record.minor; else { $("#minorInput").value = "__custom"; $("#customMinorField").classList.remove("hidden"); $("#minorCustomInput").value = record.minor || ""; } $("#necessityInput").value = record.necessity; $("#expenseForm [name=oneTime]").checked = Boolean(record.oneTime); $("#noteInput").value = record.note || ""; $("#expenseDialog").showModal(); }
+function openEditDialog(id) { const record = currentAccount().account.records.find((item) => String(item.id) === String(id)); if (!record) return; editingRecordId = String(id); $("#expenseDialogTitle").textContent = "编辑支出"; $("#saveContinueBtn").hidden = true; $("#dateInput").value = record.date; $("#amountInput").value = record.amount; $("#majorInput").value = record.major; fillMinorCategories(); if (CATEGORIES[record.major]?.includes(record.minor)) $("#minorInput").value = record.minor; else { $("#minorInput").value = "__custom"; $("#customMinorField").classList.remove("hidden"); $("#minorCustomInput").value = record.minor || ""; } $("#necessityInput").value = record.necessity; $("#expenseForm [name=oneTime]").checked = Boolean(record.oneTime); $("#noteInput").value = record.note || ""; $("#expenseDialog").showModal(); }
 function deleteRecord(id) { if (!confirm("确定删除这条记录吗？")) return; const { store, account } = currentAccount(), index = account.records.findIndex((record) => String(record.id) === String(id)); if (index < 0) return; const [record] = account.records.splice(index, 1); account.deletedRecords.unshift({ ...record, deletedAt: new Date().toISOString() }); persist(store); renderActiveView(); showToast("记录已删除，可在最近删除中恢复"); }
 function renderTrash() { const records = currentAccount().account.deletedRecords; $("#trashList").innerHTML = records.length ? `<div class="record-list">${records.map((record) => `<article class="record-row"><div class="record-main"><strong>${escapeHtml(record.major)} · ${escapeHtml(record.minor || "未分类")}</strong><small>${record.date.replace("T", " ")} · ${money(record.amount)}</small></div><button class="restore-btn" data-restore="${escapeHtml(record.id)}">恢复</button></article>`).join("")}</div>` : `<div class="empty"><strong>最近没有删除记录</strong></div>`; document.querySelectorAll("[data-restore]").forEach((button) => button.addEventListener("click", () => restoreRecord(button.dataset.restore))); }
 function openTrashDialog() { renderTrash(); $("#trashDialog").showModal(); }
@@ -275,7 +301,33 @@ $("#exportBtn").addEventListener("click", openDataDialog); $("#mobileDataBtn").a
 $("#themeBtn").addEventListener("click", openThemeDialog); $("#mobileThemeBtn").addEventListener("click", openThemeDialog); $("#closeThemeBtn").addEventListener("click", () => $("#themeDialog").close()); document.querySelectorAll("[data-theme-choice]").forEach((button) => button.addEventListener("click", () => { applyTheme(button.dataset.themeChoice); showToast("外观已切换"); }));
 $("#downloadCsvBtn").addEventListener("click", exportCsv); $("#downloadBackupBtn").addEventListener("click", exportBackup); $("#importBackupBtn").addEventListener("click", importBackup);
 $("#majorInput").innerHTML = Object.keys(CATEGORIES).map((category) => `<option>${category}</option>`).join(""); $("#majorInput").addEventListener("change", fillMinorCategories); $("#minorInput").addEventListener("change", (event) => $("#customMinorField").classList.toggle("hidden", event.target.value !== "__custom"));
-$("#expenseForm").addEventListener("submit", (event) => { event.preventDefault(); const form = new FormData(event.currentTarget), amount = Number(form.get("amount")); if (!(amount > 0)) return showToast("请输入有效金额"); const minor = form.get("minor") === "__custom" ? $("#minorCustomInput").value.trim() : form.get("minor"); if (!minor) return showToast("请输入小类名称"); const { store, account } = currentAccount(); const record = { id: editingRecordId || crypto.randomUUID?.() || String(Date.now()), date: form.get("date"), amount, major: form.get("major"), minor, necessity: form.get("necessity"), oneTime: form.get("oneTime") === "on", note: form.get("note").trim() }; const editIndex = editingRecordId ? account.records.findIndex((item) => String(item.id) === editingRecordId) : -1; if (editIndex >= 0) account.records[editIndex] = record; else account.records.push(record); const wasEditing = editIndex >= 0; persist(store); resetExpenseDialog(); $("#expenseDialog").close(); renderActiveView(); showToast(wasEditing ? "记录已更新" : "记录已保存"); });
+$("#expenseForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget), amount = Number(form.get("amount"));
+  if (!(amount > 0)) return showToast("请输入有效金额");
+  const minor = form.get("minor") === "__custom" ? $("#minorCustomInput").value.trim() : form.get("minor");
+  if (!minor) return showToast("请输入小类名称");
+  const keepOpen = event.submitter?.dataset.saveAction === "continue" && !editingRecordId;
+  const { store, account } = currentAccount();
+  const record = { id: editingRecordId || crypto.randomUUID?.() || String(Date.now()), date: form.get("date"), amount, major: form.get("major"), minor, necessity: form.get("necessity"), oneTime: form.get("oneTime") === "on", note: form.get("note").trim() };
+  const editIndex = editingRecordId ? account.records.findIndex((item) => String(item.id) === editingRecordId) : -1;
+  if (editIndex >= 0) account.records[editIndex] = record; else account.records.push(record);
+  const wasEditing = editIndex >= 0;
+  persist(store);
+  renderActiveView();
+  if (keepOpen) {
+    $("#dateInput").value = localDateTime();
+    $("#amountInput").value = "";
+    $("#noteInput").value = "";
+    $("#expenseForm [name=oneTime]").checked = false;
+    showToast("已保存，可以继续记账");
+    setTimeout(() => $("#amountInput").focus(), 50);
+    return;
+  }
+  resetExpenseDialog();
+  $("#expenseDialog").close();
+  showToast(wasEditing ? "记录已更新" : "记录已保存");
+});
 applyTheme(savedTheme()); fillMinorCategories();
 try { const { store } = currentAccount(); setView("overview"); persist(store); }
 catch (error) { if (error instanceof LedgerStorageError) storageNotice(error.message); else throw error; }
