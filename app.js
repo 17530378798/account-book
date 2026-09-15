@@ -55,7 +55,14 @@ function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (cha
 function monthRecords() { return currentAccount().account.records.filter((record) => record.date.slice(0, 7) === selectedMonth).sort((a, b) => b.date.localeCompare(a.date)); }
 function showToast(message) { const toast = $("#toast"); toast.textContent = message; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2000); }
 function savedTheme() { try { return localStorage.getItem(THEME_KEY); } catch { return "jade"; } }
-function applyTheme(theme) { const themes = ["jade", "apricot", "slate", "ocean", "lavender", "rose", "amber", "graphite"], selected = themes.includes(theme) ? theme : "jade"; document.documentElement.dataset.theme = selected; try { localStorage.setItem(THEME_KEY, selected); } catch { storageNotice("外观已切换，但设备未能保存偏好设置。"); } document.querySelectorAll("[data-theme-choice]").forEach((button) => { button.classList.toggle("selected", button.dataset.themeChoice === selected); button.setAttribute("aria-pressed", String(button.dataset.themeChoice === selected)); }); }
+function applyTheme(theme) {
+  const themes = ["jade", "apricot", "slate", "ocean", "lavender", "rose", "amber", "graphite"], selected = themes.includes(theme) ? theme : "jade";
+  document.documentElement.dataset.theme = selected;
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  $("meta[name=\"theme-color\"]")?.setAttribute("content", accent || "#147d68");
+  try { localStorage.setItem(THEME_KEY, selected); } catch { storageNotice("外观已切换，但设备未能保存偏好设置。"); }
+  document.querySelectorAll("[data-theme-choice]").forEach((button) => { button.classList.toggle("selected", button.dataset.themeChoice === selected); button.setAttribute("aria-pressed", String(button.dataset.themeChoice === selected)); });
+}
 function openThemeDialog() { $("#themeDialog").showModal(); }
 function setImportStatus(message, type = "show") { const element = $("#importStatus"); if (!element) return; element.textContent = message; element.className = `import-status ${type}`; }
 let viewScrollFrame;
