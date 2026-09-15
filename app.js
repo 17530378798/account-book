@@ -2,7 +2,7 @@ const STORAGE_KEY = "offline-ledger-users-v1";
 const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const THEME_KEY = "offline-ledger-theme-v1";
 const BRAND_KEY = "offline-ledger-brand-v1";
-const APP_VERSION = "25";
+const APP_VERSION = "26";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -81,25 +81,44 @@ function savedBrand() {
   try { return normalizeBrand(JSON.parse(localStorage.getItem(BRAND_KEY) || "null")); }
   catch { return normalizeBrand(null); }
 }
-function applyBrand(value, save = false) {
+function applyBrand(value) {
   const brand = normalizeBrand(value);
-  $("#brandMark").textContent = brand.mark;
+  const brandMark = $("#brandMark"), nameInput = $("#brandNameInput"), markInput = $("#brandMarkInput");
+  if (brandMark) brandMark.textContent = brand.mark;
   document.querySelectorAll("[data-brand-name]").forEach((element) => { element.textContent = brand.name; });
   document.title = brand.name;
   $("meta[name=\"apple-mobile-web-app-title\"]")?.setAttribute("content", brand.name);
-  $("#brandNameInput").value = brand.name;
-  $("#brandMarkInput").value = brand.mark;
-  if (save) {
-    try { localStorage.setItem(BRAND_KEY, JSON.stringify(brand)); }
-    catch { storageNotice("名称已修改，但设备未能保存这项设置。"); }
-  }
+  if (nameInput) nameInput.value = brand.name;
+  if (markInput) markInput.value = brand.mark;
   return brand;
 }
+let brandSaveTimer;
+function setBrandSaveStatus(message, type = "success") {
+  const status = $("#brandSaveStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.className = `brand-save-status ${type}`;
+  status.hidden = false;
+}
 function saveBrand() {
-  const rawName = $("#brandNameInput").value.trim(), rawMark = $("#brandMarkInput").value.trim();
-  if (!rawName) { showToast("请输入账本名称"); $("#brandNameInput").focus(); return; }
-  const brand = applyBrand({ name: rawName, mark: rawMark || [...rawName][0] }, true);
-  showToast(`名称已改为“${brand.name}”`);
+  const nameInput = $("#brandNameInput"), markInput = $("#brandMarkInput"), button = $("#saveBrandBtn");
+  if (!nameInput || !markInput || !button) return;
+  const rawName = nameInput.value.trim(), rawMark = markInput.value.trim();
+  if (!rawName) { setBrandSaveStatus("请输入账本名称", "error"); nameInput.focus(); return; }
+  const brand = applyBrand({ name: rawName, mark: rawMark || [...rawName][0] });
+  try {
+    localStorage.setItem(BRAND_KEY, JSON.stringify(brand));
+    storageNotice("");
+    setBrandSaveStatus(`已保存为“${brand.name}”`);
+    button.textContent = "已保存";
+    clearTimeout(brandSaveTimer);
+    brandSaveTimer = setTimeout(() => { button.textContent = "保存修改"; }, 1600);
+    showToast(`名称已改为“${brand.name}”`);
+  } catch {
+    storageNotice("名称已修改，但设备未能保存这项设置。");
+    setBrandSaveStatus("本次修改未能保存到设备，请检查 Safari 存储权限。", "error");
+    showToast("名称未能保存");
+  }
 }
 async function latestAppVersion() {
   try {
@@ -344,7 +363,9 @@ $("#openAddBtn").addEventListener("click", openExpenseDialog); $("#closeExpenseB
 $("#closeTrashBtn").addEventListener("click", () => { $("#trashDialog").close(); if (activeView === "records") renderRecords(); });
 $("#exportBtn").addEventListener("click", openDataDialog); $("#mobileDataBtn").addEventListener("click", openDataDialog); $("#closeDataBtn").addEventListener("click", () => $("#dataDialog").close());
 $("#themeBtn").addEventListener("click", openThemeDialog); $("#mobileThemeBtn").addEventListener("click", openThemeDialog); $("#closeThemeBtn").addEventListener("click", () => $("#themeDialog").close()); document.querySelectorAll("[data-theme-choice]").forEach((button) => button.addEventListener("click", () => { applyTheme(button.dataset.themeChoice); showToast("外观已切换"); }));
-$("#saveBrandBtn").addEventListener("click", saveBrand);
+$("#saveBrandBtn")?.addEventListener("click", saveBrand);
+$("#brandNameInput")?.addEventListener("input", () => { const status = $("#brandSaveStatus"); if (status) status.hidden = true; });
+$("#brandMarkInput")?.addEventListener("input", () => { const status = $("#brandSaveStatus"); if (status) status.hidden = true; });
 $("#downloadCsvBtn").addEventListener("click", exportCsv); $("#downloadBackupBtn").addEventListener("click", exportBackup); $("#importBackupBtn").addEventListener("click", importBackup);
 $("#majorInput").innerHTML = Object.keys(CATEGORIES).map((category) => `<option>${category}</option>`).join(""); $("#majorInput").addEventListener("change", fillMinorCategories); $("#minorInput").addEventListener("change", (event) => $("#customMinorField").classList.toggle("hidden", event.target.value !== "__custom"));
 $("#expenseForm").addEventListener("submit", (event) => {

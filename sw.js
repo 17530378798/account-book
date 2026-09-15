@@ -1,10 +1,10 @@
-const CACHE_NAME = "offline-ledger-v25";
+const CACHE_NAME = "offline-ledger-v26";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=25",
-  "./app.js?v=25",
-  "./manifest.webmanifest?v=25",
+  "./styles.css?v=26",
+  "./app.js?v=26",
+  "./manifest.webmanifest?v=26",
   "./icon-180.png",
   "./icon-192.png",
   "./icon-512.png"
@@ -35,18 +35,19 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
   event.respondWith((async () => {
+    if (url.pathname.endsWith("/version.json")) {
+      try { return await fetch(new Request(event.request, { cache: "no-store" })); }
+      catch { return Response.error(); }
+    }
+    const cache = await caches.open(CACHE_NAME);
+    const cacheKey = event.request.mode === "navigate" ? new URL("./index.html", self.registration.scope).href : event.request;
+    const cached = await cache.match(cacheKey);
+    if (cached) return cached;
     try {
       const response = await fetch(new Request(event.request, { cache: "no-store" }));
-      if (response.ok && !url.pathname.endsWith("/version.json")) {
-        const cache = await caches.open(CACHE_NAME);
-        const cacheKey = event.request.mode === "navigate" ? new URL("./index.html", self.registration.scope).href : event.request;
-        await cache.put(cacheKey, response.clone());
-      }
+      if (response.ok) await cache.put(cacheKey, response.clone());
       return response;
     } catch {
-      const cached = await caches.match(event.request);
-      if (cached) return cached;
-      if (event.request.mode === "navigate") return caches.match(new URL("./index.html", self.registration.scope).href);
       return Response.error();
     }
   })());
