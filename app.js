@@ -53,6 +53,12 @@ function money(value) { return `¥${Number(value || 0).toFixed(2)}`; }
 function monthText(value) { const [year, month] = value.split("-"); return `${year}年${Number(month)}月`; }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char])); }
 function monthRecords() { return currentAccount().account.records.filter((record) => record.date.slice(0, 7) === selectedMonth).sort((a, b) => b.date.localeCompare(a.date)); }
+function recordedDayAverage(records) {
+  const ordinaryRecords = records.filter((record) => !record.oneTime);
+  const recordedDays = new Set(ordinaryRecords.map((record) => record.date.slice(0, 10))).size;
+  const total = ordinaryRecords.reduce((sum, record) => sum + (Number(record.amount) || 0), 0);
+  return { amount: recordedDays ? total / recordedDays : 0, recordedDays };
+}
 function showToast(message) { const toast = $("#toast"); toast.textContent = message; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2000); }
 function savedTheme() { try { return localStorage.getItem(THEME_KEY); } catch { return "jade"; } }
 function applyTheme(theme) {
@@ -81,8 +87,8 @@ function setView(view) {
 }
 function renderActiveView() { $("#monthInput").value = selectedMonth; if (activeView === "overview") renderOverview(); if (activeView === "records") renderRecords(); if (activeView === "analysis") renderAnalysis(); if (activeView === "months") renderMonths(); }
 function renderOverview() {
-  const records = monthRecords(), total = records.reduce((sum, record) => sum + record.amount, 0), dailyTotal = records.filter((record) => !record.oneTime).reduce((sum, record) => sum + record.amount, 0), necessary = records.filter((record) => record.necessity === "必要").reduce((sum, record) => sum + record.amount, 0), days = new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5)), 0).getDate();
-  $("#overviewView").innerHTML = `<div class="stats-grid"><article class="stat-card stat-primary"><small>本月支出</small><strong>${money(total)}</strong><span>${records.length} 笔记录</span></article><article class="stat-card"><small>日均支出</small><strong>${money(dailyTotal / days)}</strong><span>不含大额单次支出</span></article><article class="stat-card"><small>必要支出</small><strong>${money(necessary)}</strong><span>占比 ${total ? Math.round(necessary / total * 100) : 0}%</span></article><article class="stat-card"><small>剩余天数</small><strong>${selectedMonth === localMonth() ? Math.max(0, days - new Date().getDate()) : 0}</strong><span>${monthText(selectedMonth)}</span></article></div><section class="panel recent-panel"><div class="panel-head"><h2>最近记录</h2><button class="ghost-btn" data-open-records>查看全部</button></div>${recordCards(records.slice(0, 6))}</section>`;
+  const records = monthRecords(), total = records.reduce((sum, record) => sum + record.amount, 0), necessary = records.filter((record) => record.necessity === "必要").reduce((sum, record) => sum + record.amount, 0), days = new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5)), 0).getDate(), dailyAverage = recordedDayAverage(records);
+  $("#overviewView").innerHTML = `<div class="stats-grid"><article class="stat-card stat-primary"><small>本月支出</small><strong>${money(total)}</strong><span>${records.length} 笔记录</span></article><article class="stat-card"><small>日均支出</small><strong>${money(dailyAverage.amount)}</strong><span>记录 ${dailyAverage.recordedDays} 天 · 不含单次支出</span></article><article class="stat-card"><small>必要支出</small><strong>${money(necessary)}</strong><span>占比 ${total ? Math.round(necessary / total * 100) : 0}%</span></article><article class="stat-card"><small>剩余天数</small><strong>${selectedMonth === localMonth() ? Math.max(0, days - new Date().getDate()) : 0}</strong><span>${monthText(selectedMonth)}</span></article></div><section class="panel recent-panel"><div class="panel-head"><h2>最近记录</h2><button class="ghost-btn" data-open-records>查看全部</button></div>${recordCards(records.slice(0, 6))}</section>`;
   $("[data-open-records]")?.addEventListener("click", () => setView("records"));
   bindRecordActions();
 }
