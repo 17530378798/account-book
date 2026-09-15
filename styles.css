@@ -92,6 +92,8 @@ button { cursor: pointer; }
 .record-amount { font-weight: 700; }
 .record-amount.negative { color: var(--danger); }
 .record-side { display: grid; justify-items: end; gap: 5px; }
+.record-actions, .panel-actions { display: flex; align-items: center; gap: 6px; }
+.edit-btn, .restore-btn { border: 0; background: var(--accent-soft); color: var(--accent); padding: 6px 9px; border-radius: 7px; font-size: 12px; }
 .delete-btn { border: 0; background: transparent; color: var(--danger); padding: 4px; font-size: 12px; }
 .table-wrap { overflow: auto; }
 table { width: 100%; border-collapse: collapse; min-width: 620px; }
@@ -170,6 +172,9 @@ dialog::backdrop { background: rgba(25, 42, 37, .35); }
   .record-main strong, .record-main small { overflow-wrap: anywhere; }
   .record-side strong { font-size: 15px; }
   .delete-btn { min-width: 44px; min-height: 36px; text-align: right; }
+  .edit-btn, .restore-btn { min-height: 36px; }
+  .panel-actions { gap: 4px; }
+  .panel-actions .ghost-btn, .panel-actions .primary-btn { padding-inline: 10px; font-size: 13px; }
   .category-grid, .month-grid { grid-template-columns: 1fr; }
   .analysis-charts { gap: 12px; }
   .daily-bars { height: 220px; }
