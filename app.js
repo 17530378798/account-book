@@ -1,4 +1,5 @@
 const STORAGE_KEY = "offline-ledger-users-v1";
+const THEME_KEY = "offline-ledger-theme-v1";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -20,6 +21,8 @@ function monthText(value) { const [year, month] = value.split("-"); return `${ye
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char])); }
 function monthRecords() { return currentAccount().account.records.filter((record) => record.date.slice(0, 7) === selectedMonth).sort((a, b) => b.date.localeCompare(a.date)); }
 function showToast(message) { const toast = $("#toast"); toast.textContent = message; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2000); }
+function applyTheme(theme) { const selected = ["jade", "apricot", "slate"].includes(theme) ? theme : "jade"; document.documentElement.dataset.theme = selected; localStorage.setItem(THEME_KEY, selected); document.querySelectorAll("[data-theme-choice]").forEach((button) => button.classList.toggle("selected", button.dataset.themeChoice === selected)); }
+function openThemeDialog() { applyTheme(localStorage.getItem(THEME_KEY)); $("#themeDialog").showModal(); }
 function setImportStatus(message, type = "show") { const element = $("#importStatus"); if (!element) return; element.textContent = message; element.className = `import-status ${type}`; }
 function setView(view) { activeView = view; $("#viewTitle").textContent = TITLES[view]; document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === view)); document.querySelectorAll(".view").forEach((section) => section.classList.toggle("active", section.id === `${view}View`)); renderActiveView(); window.scrollTo({ top: 0, behavior: "instant" }); }
 function renderActiveView() { $("#monthInput").value = selectedMonth; if (activeView === "overview") renderOverview(); if (activeView === "records") renderRecords(); if (activeView === "analysis") renderAnalysis(); if (activeView === "months") renderMonths(); }
@@ -183,10 +186,11 @@ $("#monthInput").addEventListener("change", (event) => { selectedMonth = event.t
 $("#openAddBtn").addEventListener("click", openExpenseDialog); $("#closeExpenseBtn").addEventListener("click", () => { $("#expenseDialog").close(); resetExpenseDialog(); });
 $("#closeTrashBtn").addEventListener("click", () => { $("#trashDialog").close(); if (activeView === "records") renderRecords(); });
 $("#exportBtn").addEventListener("click", openDataDialog); $("#mobileDataBtn").addEventListener("click", openDataDialog); $("#closeDataBtn").addEventListener("click", () => $("#dataDialog").close());
+$("#themeBtn").addEventListener("click", openThemeDialog); $("#mobileThemeBtn").addEventListener("click", openThemeDialog); $("#closeThemeBtn").addEventListener("click", () => $("#themeDialog").close()); document.querySelectorAll("[data-theme-choice]").forEach((button) => button.addEventListener("click", () => { applyTheme(button.dataset.themeChoice); showToast("外观已切换"); }));
 $("#downloadCsvBtn").addEventListener("click", exportCsv); $("#downloadBackupBtn").addEventListener("click", exportBackup); $("#importBackupBtn").addEventListener("click", importBackup);
 $("#majorInput").innerHTML = Object.keys(CATEGORIES).map((category) => `<option>${category}</option>`).join(""); $("#majorInput").addEventListener("change", fillMinorCategories); $("#minorInput").addEventListener("change", (event) => $("#customMinorField").classList.toggle("hidden", event.target.value !== "__custom"));
 $("#expenseForm").addEventListener("submit", (event) => { event.preventDefault(); const form = new FormData(event.currentTarget), amount = Number(form.get("amount")); if (!(amount > 0)) return showToast("请输入有效金额"); const minor = form.get("minor") === "__custom" ? $("#minorCustomInput").value.trim() : form.get("minor"); if (!minor) return showToast("请输入小类名称"); const { store, account } = currentAccount(); const record = { id: editingRecordId || crypto.randomUUID?.() || String(Date.now()), date: form.get("date"), amount, major: form.get("major"), minor, necessity: form.get("necessity"), oneTime: form.get("oneTime") === "on", note: form.get("note").trim() }; const editIndex = editingRecordId ? account.records.findIndex((item) => String(item.id) === editingRecordId) : -1; if (editIndex >= 0) account.records[editIndex] = record; else account.records.push(record); const wasEditing = editIndex >= 0; persist(store); resetExpenseDialog(); $("#expenseDialog").close(); renderActiveView(); showToast(wasEditing ? "记录已更新" : "记录已保存"); });
-currentAccount(); fillMinorCategories(); setView("overview");
+applyTheme(localStorage.getItem(THEME_KEY)); currentAccount(); fillMinorCategories(); setView("overview");
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   window.addEventListener("load", async () => {
     const hadController = Boolean(navigator.serviceWorker.controller);
