@@ -84,16 +84,19 @@ function bindRecordActions() { document.querySelectorAll(".view.active [data-edi
 function renderRecords() { const records = monthRecords(), deletedCount = currentAccount().account.deletedRecords.length; $("#recordsView").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>${monthText(selectedMonth)}</h2><span class="muted">共 ${records.length} 笔</span></div><div class="panel-actions"><button class="ghost-btn" data-open-trash>最近删除${deletedCount ? ` (${deletedCount})` : ""}</button><button class="primary-btn" data-add-record>+ 记一笔</button></div></div>${recordCards(records)}</section>`; $("[data-add-record]")?.addEventListener("click", openExpenseDialog); $("[data-open-trash]")?.addEventListener("click", openTrashDialog); bindRecordActions(); }
 function dailyBarChart(records) {
   const days = new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5)), 0).getDate();
-  const totals = Array.from({ length: days }, (_, index) => records.filter((record) => Number(record.date.slice(8, 10)) === index + 1).reduce((sum, record) => sum + record.amount, 0));
+  const totals = Array.from({ length: days }, () => 0);
+  records.forEach((record) => { const day = Number(record.date.slice(8, 10)); if (day >= 1 && day <= days) totals[day - 1] += Number(record.amount) || 0; });
   const maximum = Math.max(...totals, 0);
-  return `<div class="chart-scroll"><div class="bars daily-bars" style="--chart-days:${days}">${totals.map((total, index) => `<div class="bar-wrap" title="${index + 1}日：${money(total)}"><small>${total ? money(total) : ""}</small><i class="bar" style="height:${maximum ? Math.max(3, total / maximum * 100) : 2}%"></i><span>${index + 1}日</span></div>`).join("")}</div></div>`;
+  return `<div class="chart-scroll"><div class="bars daily-bars${maximum ? "" : " is-empty"}" style="--chart-days:${days}">${totals.map((total, index) => `<div class="bar-wrap" title="${index + 1}日：${money(total)}"><small>${total ? money(total) : ""}</small><span class="bar-track"><i class="bar" style="--bar-height:${maximum ? Math.max(4, total / maximum * 100) : 0}%"></i></span><span>${index + 1}日</span></div>`).join("")}${maximum ? "" : `<div class="chart-empty">本月还没有支出记录</div>`}</div></div>`;
 }
 function categoryPieChart(records) {
-  const totals = Object.keys(CATEGORIES).map((category, index) => ({ category, color: COLORS[index], total: records.filter((record) => record.major === category).reduce((sum, record) => sum + record.amount, 0) })).filter((item) => item.total > 0);
+  const grouped = new Map();
+  records.forEach((record) => { const category = String(record.major || "未分类").trim() || "未分类"; grouped.set(category, (grouped.get(category) || 0) + (Number(record.amount) || 0)); });
+  const totals = [...grouped.entries()].map(([category, amount], index) => ({ category, color: COLORS[index % COLORS.length], total: amount })).filter((item) => item.total > 0).sort((a, b) => b.total - a.total);
   const total = totals.reduce((sum, item) => sum + item.total, 0);
   let angle = 0;
   const gradient = totals.map((item) => { const start = angle; angle += item.total / total * 360; return `${item.color} ${start}deg ${angle}deg`; }).join(", ") || "#e7eeeb 0deg 360deg";
-  return `<div class="donut-layout"><div class="donut" style="background:conic-gradient(${gradient})"><span>${money(total)}</span></div><div class="legend">${totals.length ? totals.map((item) => `<div class="legend-row"><span class="legend-label"><i class="dot" style="background:${item.color}"></i>${escapeHtml(item.category)}</span><strong>${money(item.total)} · ${Math.round(item.total / total * 100)}%</strong></div>`).join("") : `<span class="muted">本月暂无支出数据</span>`}</div></div>`;
+  return `<div class="donut-layout"><div class="donut${total ? "" : " is-empty"}" style="background:conic-gradient(${gradient})"><span>${money(total)}</span></div><div class="legend">${totals.length ? totals.map((item) => `<div class="legend-row"><span class="legend-label"><i class="dot" style="background:${item.color}"></i>${escapeHtml(item.category)}</span><strong>${money(item.total)} · ${Math.round(item.total / total * 100)}%</strong></div>`).join("") : `<span class="muted">本月还没有可分析的分类支出</span>`}</div></div>`;
 }
 function renderAnalysis() {
   const records = monthRecords(), total = records.reduce((sum, record) => sum + record.amount, 0), { account } = currentAccount(); account.budgets[selectedMonth] ||= {};
