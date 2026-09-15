@@ -118,8 +118,10 @@ function normalizeCsv(text) {
   if (rows.length < 1) throw new Error("CSV 文件没有内容");
   const headers = rows.shift().map((header) => header.trim());
   const position = (name) => headers.indexOf(name);
-  if (["日期时间", "金额", "大类"].some((name) => position(name) < 0)) throw new Error("CSV 缺少日期时间、金额或大类列");
-  const records = rows.map((row) => ({ id: position("ID") >= 0 ? row[position("ID")] : "", date: row[position("日期时间")], amount: row[position("金额")], major: row[position("大类")], minor: position("小类") >= 0 ? row[position("小类")] : "未分类", necessity: position("必要性") >= 0 ? row[position("必要性")] : "必要", oneTime: position("大额单次支出") >= 0 && ["是", "true", "1"].includes(String(row[position("大额单次支出")]).toLowerCase()), note: position("备注") >= 0 ? row[position("备注")] : "" }));
+  const firstPosition = (...names) => names.map((name) => position(name)).find((index) => index >= 0) ?? -1;
+  const datePosition = firstPosition("日期时间", "日期");
+  if ([datePosition, position("金额"), position("大类")].some((index) => index < 0)) throw new Error("CSV 缺少日期/金额/大类列");
+  const records = rows.map((row) => ({ id: position("ID") >= 0 ? row[position("ID")] : "", date: row[datePosition], amount: row[position("金额")], major: row[position("大类")], minor: position("小类") >= 0 ? row[position("小类")] : "未分类", necessity: position("必要性") >= 0 ? row[position("必要性")] : "必要", oneTime: position("大额单次支出") >= 0 && ["是", "true", "1"].includes(String(row[position("大额单次支出")]).toLowerCase()), note: position("备注") >= 0 ? row[position("备注")] : "" }));
   return normalizeBackup({ records, budgets: {} });
 }
 async function importBackup() {
