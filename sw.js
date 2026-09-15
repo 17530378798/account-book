@@ -1,4 +1,4 @@
-const CACHE_NAME = "offline-ledger-v5";
+const CACHE_NAME = "offline-ledger-v6";
 const APP_SHELL = [
   "./",
   "./index.html",

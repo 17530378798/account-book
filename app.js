@@ -20,6 +20,7 @@ function monthText(value) { const [year, month] = value.split("-"); return `${ye
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char])); }
 function monthRecords() { return currentAccount().account.records.filter((record) => record.date.slice(0, 7) === selectedMonth).sort((a, b) => b.date.localeCompare(a.date)); }
 function showToast(message) { const toast = $("#toast"); toast.textContent = message; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2000); }
+function setImportStatus(message, type = "show") { const element = $("#importStatus"); if (!element) return; element.textContent = message; element.className = `import-status ${type}`; }
 function setView(view) { activeView = view; $("#viewTitle").textContent = TITLES[view]; document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === view)); document.querySelectorAll(".view").forEach((section) => section.classList.toggle("active", section.id === `${view}View`)); renderActiveView(); window.scrollTo({ top: 0, behavior: "instant" }); }
 function renderActiveView() { $("#monthInput").value = selectedMonth; if (activeView === "overview") renderOverview(); if (activeView === "records") renderRecords(); if (activeView === "analysis") renderAnalysis(); if (activeView === "months") renderMonths(); }
 function renderOverview() {
@@ -82,11 +83,15 @@ function normalizeBackup(parsed) {
   const source = parsed?.format === "emotion-ledger-backup" ? parsed.account : parsed;
   if (!source || !Array.isArray(source.records)) throw new Error("这不是有效的账本备份文件");
   const records = source.records.map((record, index) => {
-    const amount = Number(record?.amount);
-    if (!record || typeof record.date !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(record.date) || !(amount > 0) || typeof record.major !== "string") throw new Error(`第 ${index + 1} 条记录格式不正确`);
+    const amount = Number(String(record?.amount ?? "").replace(/[¥￥,\s]/g, ""));
+    if (!record || typeof record.date !== "string" || !(amount > 0) || typeof record.major !== "string") throw new Error(`第 ${index + 1} 条记录格式不正确`);
     const seed = `${record.date}|${amount}|${record.major}|${record.minor || ""}|${record.note || ""}`;
     let hash = 2166136261; for (const char of seed) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); }
-    return { id: String(record.id || `import-${hash >>> 0}`), date: record.date.slice(0, 16), amount, major: record.major.slice(0, 20), minor: String(record.minor || "未分类").slice(0, 20), necessity: ["必要", "可减少", "非必要"].includes(record.necessity) ? record.necessity : "必要", oneTime: Boolean(record.oneTime), note: String(record.note || "").slice(0, 80) };
+    const rawDate = String(record.date).trim().replace(/[/.]/g, "-").replace(/\s+/, "T");
+    const dateMatch = rawDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:T(\d{1,2})(?::(\d{1,2}))?)?/);
+    if (!dateMatch) throw new Error(`第 ${index + 1} 条记录日期格式不正确`);
+    const normalizedDate = `${dateMatch[1]}-${String(dateMatch[2]).padStart(2, "0")}-${String(dateMatch[3]).padStart(2, "0")}T${String(dateMatch[4] || "00").padStart(2, "0")}:${String(dateMatch[5] || "00").padStart(2, "0")}`;
+    return { id: String(record.id || `import-${hash >>> 0}`), date: normalizedDate, amount, major: record.major.slice(0, 20), minor: String(record.minor || "未分类").slice(0, 20), necessity: ["必要", "可减少", "非必要"].includes(record.necessity) ? record.necessity : "必要", oneTime: Boolean(record.oneTime), note: String(record.note || "").slice(0, 80) };
   });
   return { records, budgets: normalizeBudgets(source.budgets) };
 }
@@ -119,26 +124,38 @@ function normalizeCsv(text) {
 }
 async function importBackup() {
   const file = $("#importFileInput").files[0];
-  if (!file) return showToast("请先选择备份文件");
+  const button = $("#importBackupBtn");
+  if (!file) { setImportStatus("请先选择文件", "error"); return; }
+  setImportStatus("正在读取文件…", "show"); button.disabled = true;
   try {
     const text = await file.text();
     const isCsv = /\.csv$/i.test(file.name) || file.type.includes("csv") || !text.trimStart().startsWith("{");
     const incoming = isCsv ? normalizeCsv(text) : normalizeBackup(JSON.parse(text));
     const mode = $("#importModeInput").value;
-    if (mode === "replace" && !confirm("替换会覆盖当前账本，确定继续吗？")) return;
+    if (mode === "replace" && !confirm("替换会覆盖当前账本，确定继续吗？")) { setImportStatus("已取消导入", "show"); return; }
     const { store, account } = currentAccount();
+    let added = 0; let updated = 0;
     if (mode === "replace") {
       store[ACCOUNT] = { records: incoming.records, budgets: isCsv ? account.budgets : incoming.budgets };
+      added = incoming.records.length;
     } else {
       const recordsById = new Map(account.records.map((record) => [String(record.id), record]));
-      incoming.records.forEach((record) => recordsById.set(String(record.id), record));
+      incoming.records.forEach((record) => { if (recordsById.has(String(record.id))) updated += 1; else added += 1; recordsById.set(String(record.id), record); });
       account.records = [...recordsById.values()];
       Object.entries(incoming.budgets).forEach(([month, categories]) => { account.budgets[month] = { ...(account.budgets[month] || {}), ...categories }; });
     }
-    persist(store); $("#dataDialog").close(); renderActiveView(); showToast(`成功导入 ${incoming.records.length} 条记录`);
-  } catch (error) { showToast(error.message || "备份文件无法读取"); }
+    persist(store);
+    const latest = incoming.records.map((record) => record.date.slice(0, 7)).sort().pop();
+    if (latest) selectedMonth = latest;
+    setView("records");
+    setImportStatus(`导入完成：新增 ${added} 条，更新 ${updated} 条`, "show");
+    showToast(`导入完成，共 ${incoming.records.length} 条记录`);
+    setTimeout(() => $("#dataDialog")?.close(), 1200);
+  } catch (error) {
+    setImportStatus(error.message || "备份文件无法读取", "error");
+  } finally { button.disabled = false; }
 }
-function openDataDialog() { $("#importFileInput").value = ""; $("#dataDialog").showModal(); }
+function openDataDialog() { $("#importFileInput").value = ""; setImportStatus("", "hide"); $("#dataDialog").showModal(); }
 document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
 $("#monthInput").addEventListener("change", (event) => { selectedMonth = event.target.value || localMonth(); renderActiveView(); });
 $("#openAddBtn").addEventListener("click", openExpenseDialog); $("#closeExpenseBtn").addEventListener("click", () => $("#expenseDialog").close());
