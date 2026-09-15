@@ -9,14 +9,14 @@
   <meta name="apple-mobile-web-app-title" content="情绪稳定">
   <link rel="icon" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-180.png">
-  <link rel="manifest" href="manifest.webmanifest?v=24">
-  <link rel="stylesheet" href="styles.css?v=24">
+  <link rel="manifest" href="manifest.webmanifest?v=25">
+  <link rel="stylesheet" href="styles.css?v=25">
   <title>情绪稳定</title>
 </head>
 <body>
   <div id="app" class="app-shell">
     <aside class="sidebar">
-      <div class="logo"><span class="brand-mark">情</span><span>情绪稳定</span></div>
+      <div class="logo"><span id="brandMark" class="brand-mark">情</span><span data-brand-name>情绪稳定</span></div>
       <div class="account-box"><div class="avatar">我</div><div class="account-meta"><strong>我的账本</strong><small>数据保存在当前设备</small></div></div>
       <nav class="nav" aria-label="账本导航">
         <button class="nav-item active" data-view="overview"><span>总览</span></button>
@@ -30,7 +30,7 @@
       <p id="storageNotice" class="storage-notice" role="alert" hidden></p>
       <button id="updateAppBtn" class="ghost-btn" hidden>新版本已就绪，保存后点击更新</button>
       <header class="topbar">
-        <div class="title-row"><div><small class="mobile-brand">情绪稳定</small><h1 id="viewTitle">月度总览</h1></div><div class="mobile-title-actions"><button id="mobileThemeBtn" class="ghost-btn mobile-data-btn">外观</button><button id="mobileDataBtn" class="ghost-btn mobile-data-btn">备份</button></div></div>
+        <div class="title-row"><div><small class="mobile-brand" data-brand-name>情绪稳定</small><h1 id="viewTitle">月度总览</h1></div><div class="mobile-title-actions"><button id="mobileThemeBtn" class="ghost-btn mobile-data-btn">外观</button><button id="mobileDataBtn" class="ghost-btn mobile-data-btn">备份</button></div></div>
         <div class="top-actions"><input id="monthInput" class="month-picker" type="month" aria-label="选择月份"><button id="openAddBtn" class="primary-btn">+ 记一笔</button></div>
       </header>
       <section id="overviewView" class="view active"></section><section id="recordsView" class="view"></section><section id="analysisView" class="view"></section><section id="monthsView" class="view"></section>
@@ -53,6 +53,10 @@
     <div class="dialog-inner">
       <div class="dialog-head"><div><h2>选择外观</h2><small class="muted">选择你喜欢的记账本风格</small></div><button id="closeThemeBtn" type="button" class="ghost-btn">关闭</button></div>
       <div class="theme-grid">
+        <section class="brand-settings">
+          <div><h3>名称与标识</h3><small class="muted">自定义账本左上角显示的内容</small></div>
+          <div class="brand-fields"><div class="field"><label for="brandNameInput">账本名称</label><input id="brandNameInput" maxlength="12" autocomplete="off" placeholder="情绪稳定"></div><div class="field brand-mark-field"><label for="brandMarkInput">图标文字</label><input id="brandMarkInput" maxlength="2" autocomplete="off" placeholder="情"></div><button id="saveBrandBtn" type="button" class="primary-btn">保存修改</button></div>
+        </section>
         <button class="theme-card" data-theme-choice="jade"><span class="theme-preview jade-preview"><i></i><i></i><i></i></span><strong>深翠质感</strong><small>清晰、沉稳、有层次</small></button>
         <button class="theme-card" data-theme-choice="apricot"><span class="theme-preview apricot-preview"><i></i><i></i><i></i></span><strong>暖杏奶咖</strong><small>温暖、柔和、生活感</small></button>
         <button class="theme-card" data-theme-choice="slate"><span class="theme-preview slate-preview"><i></i><i></i><i></i></span><strong>静谧蓝灰</strong><small>克制、干净、现代感</small></button>
@@ -88,6 +92,6 @@
     </div>
   </dialog>
   <div id="toast" class="toast" role="status"></div>
-  <script src="app.js?v=24"></script>
+  <script src="app.js?v=25"></script>
 </body>
 </html>

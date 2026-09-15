@@ -1,7 +1,8 @@
 const STORAGE_KEY = "offline-ledger-users-v1";
 const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const THEME_KEY = "offline-ledger-theme-v1";
-const APP_VERSION = "24";
+const BRAND_KEY = "offline-ledger-brand-v1";
+const APP_VERSION = "25";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -71,6 +72,35 @@ function calendarHeatmap(records) {
 }
 function showToast(message) { const toast = $("#toast"); toast.textContent = message; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2000); }
 function savedTheme() { try { return localStorage.getItem(THEME_KEY); } catch { return "jade"; } }
+function normalizeBrand(value) {
+  const name = String(value?.name || "").trim().slice(0, 12) || "情绪稳定";
+  const mark = [...String(value?.mark || "").trim()].slice(0, 2).join("") || [...name][0] || "情";
+  return { name, mark };
+}
+function savedBrand() {
+  try { return normalizeBrand(JSON.parse(localStorage.getItem(BRAND_KEY) || "null")); }
+  catch { return normalizeBrand(null); }
+}
+function applyBrand(value, save = false) {
+  const brand = normalizeBrand(value);
+  $("#brandMark").textContent = brand.mark;
+  document.querySelectorAll("[data-brand-name]").forEach((element) => { element.textContent = brand.name; });
+  document.title = brand.name;
+  $("meta[name=\"apple-mobile-web-app-title\"]")?.setAttribute("content", brand.name);
+  $("#brandNameInput").value = brand.name;
+  $("#brandMarkInput").value = brand.mark;
+  if (save) {
+    try { localStorage.setItem(BRAND_KEY, JSON.stringify(brand)); }
+    catch { storageNotice("名称已修改，但设备未能保存这项设置。"); }
+  }
+  return brand;
+}
+function saveBrand() {
+  const rawName = $("#brandNameInput").value.trim(), rawMark = $("#brandMarkInput").value.trim();
+  if (!rawName) { showToast("请输入账本名称"); $("#brandNameInput").focus(); return; }
+  const brand = applyBrand({ name: rawName, mark: rawMark || [...rawName][0] }, true);
+  showToast(`名称已改为“${brand.name}”`);
+}
 async function latestAppVersion() {
   try {
     const response = await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" });
@@ -314,6 +344,7 @@ $("#openAddBtn").addEventListener("click", openExpenseDialog); $("#closeExpenseB
 $("#closeTrashBtn").addEventListener("click", () => { $("#trashDialog").close(); if (activeView === "records") renderRecords(); });
 $("#exportBtn").addEventListener("click", openDataDialog); $("#mobileDataBtn").addEventListener("click", openDataDialog); $("#closeDataBtn").addEventListener("click", () => $("#dataDialog").close());
 $("#themeBtn").addEventListener("click", openThemeDialog); $("#mobileThemeBtn").addEventListener("click", openThemeDialog); $("#closeThemeBtn").addEventListener("click", () => $("#themeDialog").close()); document.querySelectorAll("[data-theme-choice]").forEach((button) => button.addEventListener("click", () => { applyTheme(button.dataset.themeChoice); showToast("外观已切换"); }));
+$("#saveBrandBtn").addEventListener("click", saveBrand);
 $("#downloadCsvBtn").addEventListener("click", exportCsv); $("#downloadBackupBtn").addEventListener("click", exportBackup); $("#importBackupBtn").addEventListener("click", importBackup);
 $("#majorInput").innerHTML = Object.keys(CATEGORIES).map((category) => `<option>${category}</option>`).join(""); $("#majorInput").addEventListener("change", fillMinorCategories); $("#minorInput").addEventListener("change", (event) => $("#customMinorField").classList.toggle("hidden", event.target.value !== "__custom"));
 $("#expenseForm").addEventListener("submit", (event) => {
@@ -343,7 +374,7 @@ $("#expenseForm").addEventListener("submit", (event) => {
   $("#expenseDialog").close();
   showToast(wasEditing ? "记录已更新" : "记录已保存");
 });
-applyTheme(savedTheme()); fillMinorCategories();
+applyTheme(savedTheme()); applyBrand(savedBrand()); fillMinorCategories();
 try { const { store } = currentAccount(); setView("overview"); persist(store); }
 catch (error) { if (error instanceof LedgerStorageError) storageNotice(error.message); else throw error; }
 if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});

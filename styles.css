@@ -197,6 +197,11 @@ dialog::backdrop { background: rgba(25, 42, 37, .35); }
 .import-status.error { display: block; background: #fff2f2; color: var(--danger); }
 .theme-dialog { width: min(620px, calc(100% - 30px)); }
 .theme-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.brand-settings { grid-column: 1 / -1; display: grid; gap: 14px; margin-bottom: 4px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--accent-soft) 42%, var(--panel)); }
+.brand-settings h3 { margin: 0 0 4px; font-size: 16px; }
+.brand-fields { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; align-items: end; gap: 10px; }
+.brand-fields .field { margin: 0; }
+.brand-fields .primary-btn { min-height: 44px; white-space: nowrap; }
 .theme-card { display: grid; gap: 8px; padding: 12px; border: 2px solid transparent; border-radius: 14px; background: var(--bg); color: var(--ink); text-align: left; }
 .theme-card.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .theme-card small { color: var(--muted); line-height: 1.4; }
@@ -292,6 +297,9 @@ dialog::backdrop { background: rgba(25, 42, 37, .35); }
   .save-btn { width: 100%; min-height: 48px; }
   .export-actions { grid-template-columns: 1fr; }
   .theme-grid { grid-template-columns: 1fr; }
+  .brand-settings { grid-column: 1; padding: 14px; }
+  .brand-fields { grid-template-columns: minmax(0, 1fr) 92px; }
+  .brand-fields .primary-btn { grid-column: 1 / -1; width: 100%; }
   .theme-card { grid-template-columns: 120px 1fr; align-items: center; }
   .theme-card small { grid-column: 2; }
   .theme-preview { grid-row: 1 / 3; height: 76px; }
