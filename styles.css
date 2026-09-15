@@ -71,6 +71,28 @@ button { cursor: pointer; }
 .stat-card small { color: var(--muted); }
 .stat-card strong { display: block; margin-top: 8px; font-size: 26px; }
 .stat-card .trend { margin-top: 8px; color: var(--accent); font-size: 12px; }
+.heatmap-panel { margin-top: 16px; }
+.heatmap-total { color: var(--muted); font-size: 13px; }
+.heatmap-weekdays, .heatmap-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.heatmap-weekdays { margin-bottom: 8px; color: var(--muted); font-size: 11px; text-align: center; }
+.heatmap-day { min-width: 0; aspect-ratio: 1.35; display: grid; align-content: space-between; gap: 2px; padding: 7px; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: var(--accent-soft); color: var(--ink); text-align: left; }
+.heatmap-day span { font-size: 12px; font-weight: 600; }
+.heatmap-day small { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.heatmap-day.level-0 { background: color-mix(in srgb, var(--panel) 85%, var(--accent-soft)); color: var(--muted); }
+.heatmap-day.level-1 { background: color-mix(in srgb, var(--accent) 15%, var(--panel)); }
+.heatmap-day.level-2 { background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
+.heatmap-day.level-3 { background: color-mix(in srgb, var(--accent) 48%, var(--panel)); }
+.heatmap-day.level-4 { background: color-mix(in srgb, var(--accent) 68%, var(--panel)); color: #fff; }
+.heatmap-day.level-5 { background: var(--accent); color: #fff; }
+.heatmap-day.is-today { outline: 2px solid var(--ink); outline-offset: -2px; }
+.heatmap-scale { display: flex; justify-content: flex-end; align-items: center; gap: 5px; margin-top: 10px; color: var(--muted); font-size: 10px; }
+.heatmap-scale i { width: 13px; height: 13px; border: 1px solid var(--line); border-radius: 4px; }
+.heatmap-scale .level-0 { background: color-mix(in srgb, var(--panel) 85%, var(--accent-soft)); }
+.heatmap-scale .level-1 { background: color-mix(in srgb, var(--accent) 15%, var(--panel)); }
+.heatmap-scale .level-2 { background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
+.heatmap-scale .level-3 { background: color-mix(in srgb, var(--accent) 48%, var(--panel)); }
+.heatmap-scale .level-4 { background: color-mix(in srgb, var(--accent) 68%, var(--panel)); }
+.heatmap-scale .level-5 { background: var(--accent); }
 .content-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .85fr); gap: 16px; margin-top: 16px; }
 .analysis-charts { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, .85fr); gap: 16px; }
 .budget-panel { margin-top: 16px; }
@@ -213,6 +235,11 @@ dialog::backdrop { background: rgba(25, 42, 37, .35); }
   .stat-card { min-width: 0; border-radius: 12px; padding: 14px; }
   .stat-card strong { font-size: clamp(20px, 6vw, 25px); overflow-wrap: anywhere; }
   .stat-card span, .stat-card .trend { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+  .heatmap-panel { margin-top: 12px; padding: 14px 10px; }
+  .heatmap-weekdays, .heatmap-grid { gap: 4px; }
+  .heatmap-day { aspect-ratio: 1 / 1.12; padding: 5px 3px; border-radius: 7px; text-align: center; }
+  .heatmap-day span { font-size: 11px; }
+  .heatmap-day small { font-size: 8px; }
   .stat-primary { background: var(--accent); color: #fff; }
   .stat-primary small, .stat-primary span { color: rgba(255, 255, 255, .8); }
   .panel { padding: 16px; border-radius: 12px; }

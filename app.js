@@ -1,7 +1,7 @@
 const STORAGE_KEY = "offline-ledger-users-v1";
 const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const THEME_KEY = "offline-ledger-theme-v1";
-const APP_VERSION = "22";
+const APP_VERSION = "23";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -60,6 +60,15 @@ function recordedDayAverage(records) {
   const total = ordinaryRecords.reduce((sum, record) => sum + (Number(record.amount) || 0), 0);
   return { amount: recordedDays ? total / recordedDays : 0, recordedDays };
 }
+function calendarHeatmap(records) {
+  const year = Number(selectedMonth.slice(0, 4)), month = Number(selectedMonth.slice(5)), days = new Date(year, month, 0).getDate(), leading = new Date(year, month - 1, 1).getDay();
+  const totals = Array.from({ length: days }, () => 0);
+  records.forEach((record) => { const day = Number(record.date.slice(8, 10)); if (day >= 1 && day <= days) totals[day - 1] += Number(record.amount) || 0; });
+  const maximum = Math.max(...totals, 0), today = localDateTime().slice(0, 10);
+  const blanks = Array.from({ length: leading }, () => `<span class="heatmap-blank" aria-hidden="true"></span>`).join("");
+  const cells = totals.map((total, index) => { const day = index + 1, date = `${selectedMonth}-${String(day).padStart(2, "0")}`, intensity = maximum ? Math.ceil(total / maximum * 5) : 0; return `<button type="button" class="heatmap-day level-${intensity}${date === today ? " is-today" : ""}" data-heatmap-day="${day}" data-heatmap-total="${total}" aria-label="${monthText(selectedMonth)}${day}日支出${money(total)}"><span>${day}</span><small>${total ? money(total) : ""}</small></button>`; }).join("");
+  return `<section class="panel heatmap-panel"><div class="panel-head"><div><h2>每日消费日历</h2><span class="muted">颜色越深，消费越高</span></div><span class="heatmap-total">${monthText(selectedMonth)}</span></div><div class="heatmap-weekdays" aria-hidden="true"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div class="heatmap-grid">${blanks}${cells}</div><div class="heatmap-scale"><span>少</span>${[0, 1, 2, 3, 4, 5].map((level) => `<i class="level-${level}"></i>`).join("")}<span>多</span></div></section>`;
+}
 function showToast(message) { const toast = $("#toast"); toast.textContent = message; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2000); }
 function savedTheme() { try { return localStorage.getItem(THEME_KEY); } catch { return "jade"; } }
 async function latestAppVersion() {
@@ -97,7 +106,8 @@ function setView(view) {
 function renderActiveView() { $("#monthInput").value = selectedMonth; if (activeView === "overview") renderOverview(); if (activeView === "records") renderRecords(); if (activeView === "analysis") renderAnalysis(); if (activeView === "months") renderMonths(); }
 function renderOverview() {
   const records = monthRecords(), total = records.reduce((sum, record) => sum + record.amount, 0), necessary = records.filter((record) => record.necessity === "必要").reduce((sum, record) => sum + record.amount, 0), days = new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5)), 0).getDate(), dailyAverage = recordedDayAverage(records);
-  $("#overviewView").innerHTML = `<div class="stats-grid"><article class="stat-card stat-primary"><small>本月支出</small><strong>${money(total)}</strong><span>${records.length} 笔记录</span></article><article class="stat-card"><small>日均支出</small><strong>${money(dailyAverage.amount)}</strong><span>记录 ${dailyAverage.recordedDays} 天 · 不含单次支出</span></article><article class="stat-card"><small>必要支出</small><strong>${money(necessary)}</strong><span>占比 ${total ? Math.round(necessary / total * 100) : 0}%</span></article><article class="stat-card"><small>剩余天数</small><strong>${selectedMonth === localMonth() ? Math.max(0, days - new Date().getDate()) : 0}</strong><span>${monthText(selectedMonth)}</span></article></div><section class="panel recent-panel"><div class="panel-head"><h2>最近记录</h2><button class="ghost-btn" data-open-records>查看全部</button></div>${recordCards(records.slice(0, 6))}</section>`;
+  $("#overviewView").innerHTML = `<div class="stats-grid"><article class="stat-card stat-primary"><small>本月支出</small><strong>${money(total)}</strong><span>${records.length} 笔记录</span></article><article class="stat-card"><small>日均支出</small><strong>${money(dailyAverage.amount)}</strong><span>记录 ${dailyAverage.recordedDays} 天 · 不含单次支出</span></article><article class="stat-card"><small>必要支出</small><strong>${money(necessary)}</strong><span>占比 ${total ? Math.round(necessary / total * 100) : 0}%</span></article><article class="stat-card"><small>剩余天数</small><strong>${selectedMonth === localMonth() ? Math.max(0, days - new Date().getDate()) : 0}</strong><span>${monthText(selectedMonth)}</span></article></div>${calendarHeatmap(records)}<section class="panel recent-panel"><div class="panel-head"><h2>最近记录</h2><button class="ghost-btn" data-open-records>查看全部</button></div>${recordCards(records.slice(0, 6))}</section>`;
+  document.querySelectorAll("[data-heatmap-day]").forEach((button) => button.addEventListener("click", () => showToast(`${button.dataset.heatmapDay}日支出 ${money(button.dataset.heatmapTotal)}`)));
   $("[data-open-records]")?.addEventListener("click", () => setView("records"));
   bindRecordActions();
 }
