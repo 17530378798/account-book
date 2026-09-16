@@ -2,7 +2,7 @@ const STORAGE_KEY = "offline-ledger-users-v1";
 const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const THEME_KEY = "offline-ledger-theme-v1";
 const BRAND_KEY = "offline-ledger-brand-v1";
-const APP_VERSION = "29";
+const APP_VERSION = "30";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -291,7 +291,7 @@ async function exportCsv() {
   const headers = ["ID", "日期时间", "金额", "大类", "小类", "必要性", "大额单次支出", "备注"];
   const rows = currentAccount().account.records.map((record) => [record.id, record.date, record.amount, record.major, record.minor, record.necessity, record.oneTime ? "是" : "否", record.note]);
   const content = `\uFEFF${[headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
-  await deliverFile(new File([content], `情绪稳定-${localMonth()}.csv`, { type: "text/csv;charset=utf-8" }), "情绪稳定 CSV 账本");
+  await deliverFile(new File([content], `支付记录-${localMonth()}.csv`, { type: "text/csv;charset=utf-8" }), "支付记录 CSV");
 }
 async function exportSavingsCsv() {
   const content = savingsCsvContent(currentAccount().account.savings);
