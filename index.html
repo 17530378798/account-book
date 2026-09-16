@@ -9,8 +9,8 @@
   <meta name="apple-mobile-web-app-title" content="情绪稳定">
   <link rel="icon" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-180.png">
-  <link rel="manifest" href="manifest.webmanifest?v=31">
-  <link rel="stylesheet" href="styles.css?v=31">
+  <link rel="manifest" href="manifest.webmanifest?v=32">
+  <link rel="stylesheet" href="styles.css?v=32">
   <title>情绪稳定</title>
 </head>
 <body>
@@ -47,6 +47,16 @@
       <label class="check-row"><input name="oneTime" type="checkbox"><span>大额单次支出（不计入日均）</span></label>
       <div class="field"><label for="noteInput">备注</label><textarea id="noteInput" name="note" rows="2" maxlength="80" placeholder="可选"></textarea></div>
       <div class="dialog-actions"><button class="primary-btn save-btn" type="submit" data-save-action="close">保存记录</button><button id="saveContinueBtn" class="ghost-btn continue-btn" type="submit" data-save-action="continue">保存并继续</button></div>
+    </form>
+  </dialog>
+  <dialog id="incomeDialog" class="income-dialog">
+    <form id="incomeForm" class="dialog-inner">
+      <div class="dialog-head"><div><h2 id="incomeDialogTitle">新增收入</h2><small class="muted">收入独立记录，不计入消费支出</small></div><button id="closeIncomeBtn" type="button" class="ghost-btn">取消</button></div>
+      <div class="field"><label for="incomeDateInput">收入日期</label><input id="incomeDateInput" name="date" type="datetime-local" required></div>
+      <div class="field"><label for="incomeAmountInput">收入金额</label><input id="incomeAmountInput" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" required></div>
+      <div class="field"><label for="incomeCategoryInput">收入类型</label><select id="incomeCategoryInput" name="category"><option>工资</option><option>奖金</option><option>兼职</option><option>理财收益</option><option>报销</option><option>其他收入</option></select></div>
+      <div class="field"><label for="incomeNoteInput">备注</label><textarea id="incomeNoteInput" name="note" rows="2" maxlength="80" placeholder="可选"></textarea></div>
+      <div class="dialog-actions"><button class="primary-btn save-btn" type="submit">保存收入</button></div>
     </form>
   </dialog>
   <dialog id="savingDialog" class="saving-dialog">
@@ -90,7 +100,7 @@
       <div class="dialog-head"><h2>备份与恢复</h2><button id="closeDataBtn" type="button" class="ghost-btn">关闭</button></div>
       <section class="data-section">
         <h3>导出账本</h3>
-        <p>消费和存款可分别导出 CSV；完整 JSON 会同时保存账单、分类预算、最近删除和每月存款。应用更新会保留本机账本。</p>
+        <p>支付和存款可分别导出 CSV；完整 JSON 会同时保存支付、收入、存款、分类预算和最近删除。应用更新会保留本机账本。</p>
         <div class="export-actions"><button id="downloadCsvBtn" type="button" class="primary-btn wide-btn">导出支付 CSV</button><button id="downloadSavingsCsvBtn" type="button" class="ghost-btn wide-btn">导出存款 CSV</button><button id="downloadBackupBtn" type="button" class="ghost-btn wide-btn export-full">完整备份 JSON</button></div>
       </section>
       <section class="data-section">
@@ -101,9 +111,14 @@
         <div class="field"><label for="importModeInput">处理方式</label><select id="importModeInput"><option value="merge">合并到现有数据</option><option value="replace">替换所选类型的数据</option></select></div><div id="importStatus" class="import-status" role="status" aria-live="polite"></div>
         <button id="importBackupBtn" type="button" class="primary-btn wide-btn">导入备份</button>
       </section>
+      <section class="data-section">
+        <h3>历史版本</h3>
+        <p>每次保存前自动保留上一版本，最多保存 10 个。恢复前也会保留当前账本。</p>
+        <div id="historyList" class="history-list"></div>
+      </section>
     </div>
   </dialog>
   <div id="toast" class="toast" role="status"></div>
-  <script src="app.js?v=31"></script>
+  <script src="app.js?v=32"></script>
 </body>
 </html>
