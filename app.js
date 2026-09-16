@@ -3,7 +3,7 @@ const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const HISTORY_KEY = "offline-ledger-history-v1";
 const THEME_KEY = "offline-ledger-theme-v1";
 const BRAND_KEY = "offline-ledger-brand-v1";
-const APP_VERSION = "34";
+const APP_VERSION = "35";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
