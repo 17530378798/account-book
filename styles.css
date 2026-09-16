@@ -173,7 +173,13 @@ th { color: var(--muted); font-weight: 500; }
 .month-card { display: grid; gap: 8px; text-align: left; color: var(--ink); }
 .month-card strong { font-size: 21px; }
 .month-card small { color: var(--muted); }
+.month-saving { color: var(--accent); font-weight: 700; }
 .month-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(31, 143, 120, .1); }
+.savings-panel { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 16px; background: linear-gradient(135deg, var(--panel), var(--accent-soft)); }
+.savings-copy { display: grid; gap: 5px; min-width: 0; }
+.savings-copy small { color: var(--accent); font-weight: 700; }
+.savings-copy strong { color: var(--ink); font-size: 24px; }
+.savings-copy span { color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .category-meta, .month-meta { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-bottom: 9px; }
 dialog { border: 0; border-radius: 16px; padding: 0; width: min(500px, calc(100% - 30px)); box-shadow: 0 25px 80px rgba(12, 31, 26, .25); }
 dialog::backdrop { background: rgba(25, 42, 37, .35); }
@@ -192,6 +198,7 @@ dialog::backdrop { background: rgba(25, 42, 37, .35); }
 .data-section p { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .wide-btn { width: 100%; min-height: 44px; }
 .export-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.export-full { grid-column: 1 / -1; }
 .import-status { display: none; margin: 0 0 12px; padding: 10px 12px; border-radius: 9px; font-size: 13px; line-height: 1.5; }
 .import-status.show { display: block; background: var(--accent-soft); color: var(--accent); }
 .import-status.error { display: block; background: #fff2f2; color: var(--danger); }
@@ -281,10 +288,10 @@ dialog::backdrop { background: rgba(25, 42, 37, .35); }
   .budget-row .ghost-btn { min-width: 64px; }
   dialog { width: 100%; max-width: none; max-height: min(92dvh, 760px); margin: auto 0 0; border-radius: 18px 18px 0 0; overflow-y: auto; }
   .dialog-inner { padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); }
-  #expenseDialog, #dataDialog, #trashDialog, #themeDialog { inset: 0; width: 100%; height: 100%; height: 100dvh; max-width: none; max-height: none; margin: 0; border-radius: 0; overflow: hidden; background: var(--panel); }
-  #expenseDialog .dialog-inner, #dataDialog .dialog-inner { display: flex; flex-direction: column; width: 100%; min-height: 100%; height: 100%; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; padding: calc(18px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
-  #expenseDialog .dialog-head, #dataDialog .dialog-head { flex: none; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
-  #expenseDialog .field, #expenseDialog .form-grid, #expenseDialog .check-row, #dataDialog .data-section { flex: none; }
+  #expenseDialog, #savingDialog, #dataDialog, #trashDialog, #themeDialog { inset: 0; width: 100%; height: 100%; height: 100dvh; max-width: none; max-height: none; margin: 0; border-radius: 0; overflow: hidden; background: var(--panel); }
+  #expenseDialog .dialog-inner, #savingDialog .dialog-inner, #dataDialog .dialog-inner { display: flex; flex-direction: column; width: 100%; min-height: 100%; height: 100%; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; padding: calc(18px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  #expenseDialog .dialog-head, #savingDialog .dialog-head, #dataDialog .dialog-head { flex: none; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+  #expenseDialog .field, #expenseDialog .form-grid, #expenseDialog .check-row, #savingDialog .field, #dataDialog .data-section { flex: none; }
   #expenseDialog .dialog-actions { flex: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin-top: auto; padding-top: 18px; padding-bottom: 0; }
   #expenseDialog .continue-btn { order: -1; width: 100%; min-height: 48px; }
   #trashDialog .dialog-inner { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; padding: calc(18px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
@@ -297,6 +304,8 @@ dialog::backdrop { background: rgba(25, 42, 37, .35); }
   .field input, .field select, .field textarea { min-height: 44px; font-size: 16px; }
   .dialog-actions { position: sticky; bottom: 0; padding-top: 8px; background: var(--panel); }
   .save-btn { width: 100%; min-height: 48px; }
+  .savings-panel { align-items: stretch; flex-direction: column; gap: 12px; margin-top: 12px; }
+  .savings-panel .primary-btn { width: 100%; }
   .export-actions { grid-template-columns: 1fr; }
   .theme-grid { grid-template-columns: 1fr; }
   .brand-settings { grid-column: 1; padding: 14px; }

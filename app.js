@@ -2,7 +2,7 @@ const STORAGE_KEY = "offline-ledger-users-v1";
 const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const THEME_KEY = "offline-ledger-theme-v1";
 const BRAND_KEY = "offline-ledger-brand-v1";
-const APP_VERSION = "27";
+const APP_VERSION = "28";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -26,7 +26,7 @@ function parseStoredValue(key) {
   if (raw === null) return { state: "missing" };
   try {
     const value = JSON.parse(raw);
-    if (!isObject(value) || !Object.values(value).every((account) => isObject(account) && Array.isArray(account.records) && account.records.every((record) => isObject(record) && typeof record.date === "string" && Number.isFinite(record.amount)) && (account.budgets === undefined || isObject(account.budgets)) && (account.deletedRecords === undefined || Array.isArray(account.deletedRecords)))) return { state: "invalid" };
+    if (!isObject(value) || !Object.values(value).every((account) => isObject(account) && Array.isArray(account.records) && account.records.every((record) => isObject(record) && typeof record.date === "string" && Number.isFinite(record.amount)) && (account.budgets === undefined || isObject(account.budgets)) && (account.deletedRecords === undefined || Array.isArray(account.deletedRecords)) && (account.savings === undefined || Array.isArray(account.savings) && account.savings.every((saving) => isObject(saving) && /^\d{4}-\d{2}$/.test(saving.month) && Number.isFinite(saving.amount))))) return { state: "invalid" };
     return { state: "valid", value };
   } catch { return { state: "invalid" }; }
 }
@@ -42,7 +42,7 @@ function readStore() {
   if (primary.state === "missing" && backup.state === "missing") return {};
   throw new LedgerStorageError("本机账本暂时无法读取，已停止写入以保护原数据。请勿清除网站数据。");
 }
-function currentAccount() { const store = readStore(); if (!store[ACCOUNT]) store[ACCOUNT] = { records: [], budgets: {}, deletedRecords: [] }; store[ACCOUNT].budgets ||= {}; store[ACCOUNT].deletedRecords ||= []; return { store, account: store[ACCOUNT] }; }
+function currentAccount() { const store = readStore(); if (!store[ACCOUNT]) store[ACCOUNT] = { records: [], budgets: {}, deletedRecords: [], savings: [] }; store[ACCOUNT].budgets ||= {}; store[ACCOUNT].deletedRecords ||= []; store[ACCOUNT].savings ||= []; return { store, account: store[ACCOUNT] }; }
 function persist(store) {
   const serialized = JSON.stringify(store);
   try { localStorage.setItem(STORAGE_KEY, serialized); }
@@ -55,6 +55,23 @@ function money(value) { return `¥${Number(value || 0).toFixed(2)}`; }
 function monthText(value) { const [year, month] = value.split("-"); return `${year}年${Number(month)}月`; }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char])); }
 function monthRecords() { return currentAccount().account.records.filter((record) => record.date.slice(0, 7) === selectedMonth).sort((a, b) => b.date.localeCompare(a.date)); }
+function monthSavings(month = selectedMonth) { return currentAccount().account.savings.find((saving) => saving.month === month) || null; }
+function normalizeSaving(value) {
+  const month = String(value?.month || "").trim();
+  const amount = Number(String(value?.amount ?? "").replace(/[¥￥,\s]/g, ""));
+  if (!/^\d{4}-\d{2}$/.test(month) || !Number.isFinite(amount) || !(amount > 0)) throw new Error("存款记录格式不正确");
+  const rawDate = String(value?.date || `${month}-01`).trim().replace(/[/.]/g, "-").replace(/\s+/, "T");
+  const dateMatch = rawDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:T(\d{1,2})(?::(\d{1,2}))?)?/);
+  const date = dateMatch ? `${dateMatch[1]}-${String(dateMatch[2]).padStart(2, "0")}-${String(dateMatch[3]).padStart(2, "0")}T${String(dateMatch[4] || "00").padStart(2, "0")}:${String(dateMatch[5] || "00").padStart(2, "0")}` : `${month}-01T00:00`;
+  return { id: String(value?.id || `saving-${month}`), month, amount, date, note: String(value?.note || "").slice(0, 80) };
+}
+function normalizeSavings(value) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error("存款数据格式不正确");
+  const byMonth = new Map();
+  value.forEach((saving) => { const normalized = normalizeSaving(saving); byMonth.set(normalized.month, normalized); });
+  return [...byMonth.values()].sort((a, b) => b.month.localeCompare(a.month));
+}
 function recordedDayAverage(records) {
   const ordinaryRecords = records.filter((record) => !record.oneTime);
   const recordedDays = new Set(ordinaryRecords.map((record) => record.date.slice(0, 10))).size;
@@ -152,9 +169,11 @@ function setView(view) {
 }
 function renderActiveView() { $("#monthInput").value = selectedMonth; if (activeView === "overview") renderOverview(); if (activeView === "records") renderRecords(); if (activeView === "analysis") renderAnalysis(); if (activeView === "months") renderMonths(); }
 function renderOverview() {
-  const records = monthRecords(), total = records.reduce((sum, record) => sum + record.amount, 0), necessary = records.filter((record) => record.necessity === "必要").reduce((sum, record) => sum + record.amount, 0), days = new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5)), 0).getDate(), dailyAverage = recordedDayAverage(records);
-  $("#overviewView").innerHTML = `<div class="stats-grid"><article class="stat-card stat-primary"><small>本月支出</small><strong>${money(total)}</strong><span>${records.length} 笔记录</span></article><article class="stat-card"><small>日均支出</small><strong>${money(dailyAverage.amount)}</strong><span>记录 ${dailyAverage.recordedDays} 天 · 不含单次支出</span></article><article class="stat-card"><small>必要支出</small><strong>${money(necessary)}</strong><span>占比 ${total ? Math.round(necessary / total * 100) : 0}%</span></article><article class="stat-card"><small>剩余天数</small><strong>${selectedMonth === localMonth() ? Math.max(0, days - new Date().getDate()) : 0}</strong><span>${monthText(selectedMonth)}</span></article></div>${calendarHeatmap(records)}<section class="panel recent-panel"><div class="panel-head"><h2>最近记录</h2><button class="ghost-btn" data-open-records>查看全部</button></div>${recordCards(records.slice(0, 6))}</section>`;
+  const records = monthRecords(), saving = monthSavings(), total = records.reduce((sum, record) => sum + record.amount, 0), necessary = records.filter((record) => record.necessity === "必要").reduce((sum, record) => sum + record.amount, 0), days = new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5)), 0).getDate(), dailyAverage = recordedDayAverage(records);
+  const savingsPanel = $("#savingDialog") ? `<section class="panel savings-panel"><div class="savings-copy"><small>每月存款</small><strong>${saving ? money(saving.amount) : "尚未记录"}</strong><span>${saving ? `${saving.date.slice(0, 10)}${saving.note ? ` · ${escapeHtml(saving.note)}` : ""}` : `${monthText(selectedMonth)}固定存款单独记录，不计入支出`}</span></div><button type="button" class="primary-btn" data-open-saving>${saving ? "修改存款" : "记录本月存款"}</button></section>` : "";
+  $("#overviewView").innerHTML = `<div class="stats-grid"><article class="stat-card stat-primary"><small>本月支出</small><strong>${money(total)}</strong><span>${records.length} 笔记录</span></article><article class="stat-card"><small>日均支出</small><strong>${money(dailyAverage.amount)}</strong><span>记录 ${dailyAverage.recordedDays} 天 · 不含单次支出</span></article><article class="stat-card"><small>必要支出</small><strong>${money(necessary)}</strong><span>占比 ${total ? Math.round(necessary / total * 100) : 0}%</span></article><article class="stat-card"><small>剩余天数</small><strong>${selectedMonth === localMonth() ? Math.max(0, days - new Date().getDate()) : 0}</strong><span>${monthText(selectedMonth)}</span></article></div>${savingsPanel}${calendarHeatmap(records)}<section class="panel recent-panel"><div class="panel-head"><h2>最近记录</h2><button class="ghost-btn" data-open-records>查看全部</button></div>${recordCards(records.slice(0, 6))}</section>`;
   document.querySelectorAll("[data-heatmap-day]").forEach((button) => button.addEventListener("click", () => showToast(`${button.dataset.heatmapDay}日支出 ${money(button.dataset.heatmapTotal)}`)));
+  $("[data-open-saving]")?.addEventListener("click", openSavingDialog);
   $("[data-open-records]")?.addEventListener("click", () => setView("records"));
   bindRecordActions();
 }
@@ -215,7 +234,32 @@ function renderAnalysis() {
   document.querySelectorAll("[data-chart-day]").forEach((button) => button.addEventListener("click", () => showToast(`${button.dataset.chartDay}日支出 ${money(button.dataset.chartTotal)}`)));
   document.querySelectorAll("[data-save-budget]").forEach((button) => button.addEventListener("click", () => saveBudget(button.dataset.saveBudget)));
 }
-function renderMonths() { const records = currentAccount().account.records, months = [...new Set(records.map((record) => record.date.slice(0, 7)).concat(selectedMonth))].sort().reverse(); $("#monthsView").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>月份归档</h2><span class="muted">点击月份查看详情</span></div></div><div class="month-grid">${months.map((value) => { const list = records.filter((record) => record.date.slice(0, 7) === value), total = list.reduce((sum, record) => sum + record.amount, 0), necessary = list.filter((record) => record.necessity === "必要").reduce((sum, record) => sum + record.amount, 0); return `<button class="month-card${value === selectedMonth ? " selected" : ""}" data-month="${value}"><span>${monthText(value)}</span><strong>${money(total)}</strong><small>${list.length} 笔 · 必要支出 ${total ? Math.round(necessary / total * 100) : 0}%</small></button>`; }).join("")}</div></section>`; document.querySelectorAll("[data-month]").forEach((button) => button.addEventListener("click", () => { selectedMonth = button.dataset.month; setView("overview"); })); }
+function renderMonths() { const { account } = currentAccount(), records = account.records, savings = account.savings, savingsByMonth = new Map(savings.map((saving) => [saving.month, saving])), months = [...new Set(records.map((record) => record.date.slice(0, 7)).concat(savings.map((saving) => saving.month), selectedMonth))].sort().reverse(); $("#monthsView").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>月份归档</h2><span class="muted">每月支出与存款分开显示</span></div></div><div class="month-grid">${months.map((value) => { const list = records.filter((record) => record.date.slice(0, 7) === value), total = list.reduce((sum, record) => sum + record.amount, 0), necessary = list.filter((record) => record.necessity === "必要").reduce((sum, record) => sum + record.amount, 0), saving = savingsByMonth.get(value); return `<button class="month-card${value === selectedMonth ? " selected" : ""}" data-month="${value}"><span>${monthText(value)}</span><strong>支出 ${money(total)}</strong><span class="month-saving">存款 ${saving ? money(saving.amount) : "未记录"}</span><small>${list.length} 笔 · 必要支出 ${total ? Math.round(necessary / total * 100) : 0}%</small></button>`; }).join("")}</div></section>`; document.querySelectorAll("[data-month]").forEach((button) => button.addEventListener("click", () => { selectedMonth = button.dataset.month; setView("overview"); })); }
+function openSavingDialog() {
+  const saving = monthSavings();
+  $("#savingDialogTitle").textContent = saving ? "修改本月存款" : "记录本月存款";
+  $("#savingMonthInput").value = selectedMonth;
+  $("#savingAmountInput").value = saving?.amount || "";
+  $("#savingDateInput").value = saving?.date || localDateTime();
+  $("#savingNoteInput").value = saving?.note || "";
+  $("#savingDialog").showModal();
+  setTimeout(() => $("#savingAmountInput").focus(), 100);
+}
+function saveSaving(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  let saving;
+  try { saving = normalizeSaving({ month: form.get("month"), amount: form.get("amount"), date: form.get("date"), note: form.get("note") }); }
+  catch (error) { showToast(error.message || "请输入有效的存款记录"); return; }
+  const { store, account } = currentAccount(), index = account.savings.findIndex((item) => item.month === saving.month);
+  if (index >= 0) account.savings[index] = saving; else account.savings.push(saving);
+  account.savings.sort((a, b) => b.month.localeCompare(a.month));
+  persist(store);
+  selectedMonth = saving.month;
+  $("#savingDialog").close();
+  renderActiveView();
+  showToast("本月存款已保存");
+}
 function fillMinorCategories() { const major = $("#majorInput").value; $("#minorInput").innerHTML = CATEGORIES[major].map((minor) => `<option>${minor}</option>`).join("") + `<option value="__custom">自定义...</option>`; $("#customMinorField").classList.add("hidden"); }
 function resetExpenseDialog() { editingRecordId = null; $("#expenseDialogTitle").textContent = "新增支出"; $("#saveContinueBtn").hidden = false; $("#expenseForm").reset(); fillMinorCategories(); }
 function openExpenseDialog() { resetExpenseDialog(); $("#dateInput").value = localDateTime(); $("#expenseDialog").showModal(); setTimeout(() => $("#amountInput").focus(), 100); }
@@ -248,6 +292,15 @@ async function exportCsv() {
   const rows = currentAccount().account.records.map((record) => [record.id, record.date, record.amount, record.major, record.minor, record.necessity, record.oneTime ? "是" : "否", record.note]);
   const content = `\uFEFF${[headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
   await deliverFile(new File([content], `情绪稳定-${localMonth()}.csv`, { type: "text/csv;charset=utf-8" }), "情绪稳定 CSV 账本");
+}
+async function exportSavingsCsv() {
+  const content = savingsCsvContent(currentAccount().account.savings);
+  await deliverFile(new File([content], `每月存款-${localMonth()}.csv`, { type: "text/csv;charset=utf-8" }), "每月存款记录 CSV");
+}
+function savingsCsvContent(savings) {
+  const headers = ["月份", "存款日期", "存款金额", "备注"];
+  const rows = [...savings].sort((a, b) => b.month.localeCompare(a.month)).map((saving) => [saving.month, saving.date, saving.amount, saving.note]);
+  return `\uFEFF${[headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
 }
 function normalizeBudgets(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -287,7 +340,7 @@ function normalizeBackup(parsed) {
   });
   };
   if (source.deletedRecords !== undefined && !Array.isArray(source.deletedRecords)) throw new Error("最近删除数据格式不正确");
-  return { records: normalizeRecords(source.records), budgets: normalizeBudgets(source.budgets), deletedRecords: source.deletedRecords === undefined ? undefined : normalizeRecords(source.deletedRecords) };
+  return { records: normalizeRecords(source.records), budgets: normalizeBudgets(source.budgets), deletedRecords: source.deletedRecords === undefined ? undefined : normalizeRecords(source.deletedRecords), savings: normalizeSavings(source.savings) };
 }
 function parseCsv(text) {
   const rows = []; let row = [], field = "", quoted = false;
@@ -332,7 +385,7 @@ async function importBackup() {
     const { store, account } = currentAccount();
     let added = 0; let updated = 0;
     if (mode === "replace") {
-      store[ACCOUNT] = { records: incoming.records, budgets: isCsv ? account.budgets : incoming.budgets, deletedRecords: incoming.deletedRecords ?? account.deletedRecords };
+      store[ACCOUNT] = { records: incoming.records, budgets: isCsv ? account.budgets : incoming.budgets, deletedRecords: incoming.deletedRecords ?? account.deletedRecords, savings: isCsv ? account.savings : incoming.savings ?? account.savings };
       added = incoming.records.length;
     } else {
       const recordsById = new Map(account.records.map((record) => [String(record.id), record]));
@@ -340,6 +393,7 @@ async function importBackup() {
       account.records = [...recordsById.values()];
       account.deletedRecords = [...new Map([...account.deletedRecords, ...(incoming.deletedRecords || [])].map((record) => [String(record.id), record])).values()];
       Object.entries(incoming.budgets).forEach(([month, categories]) => { account.budgets[month] = { ...(account.budgets[month] || {}), ...categories }; });
+      if (!isCsv) account.savings = [...new Map([...account.savings, ...(incoming.savings || [])].map((saving) => [saving.month, saving])).values()].sort((a, b) => b.month.localeCompare(a.month));
     }
     const activeIds = new Set(store[ACCOUNT].records.map((record) => String(record.id)));
     store[ACCOUNT].deletedRecords = store[ACCOUNT].deletedRecords.filter((record) => !activeIds.has(String(record.id)));
@@ -358,12 +412,13 @@ function openDataDialog() { $("#importFileInput").value = ""; setImportStatus(""
 document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
 $("#monthInput").addEventListener("change", (event) => { selectedMonth = event.target.value || localMonth(); renderActiveView(); });
 $("#openAddBtn").addEventListener("click", openExpenseDialog); $("#closeExpenseBtn").addEventListener("click", () => { $("#expenseDialog").close(); resetExpenseDialog(); });
+$("#closeSavingBtn")?.addEventListener("click", () => $("#savingDialog")?.close()); $("#savingForm")?.addEventListener("submit", saveSaving);
 $("#closeTrashBtn").addEventListener("click", () => { $("#trashDialog").close(); if (activeView === "records") renderRecords(); });
 $("#exportBtn").addEventListener("click", openDataDialog); $("#mobileDataBtn").addEventListener("click", openDataDialog); $("#closeDataBtn").addEventListener("click", () => $("#dataDialog").close());
 $("#themeBtn").addEventListener("click", openThemeDialog); $("#mobileThemeBtn").addEventListener("click", openThemeDialog); $("#closeThemeBtn").addEventListener("click", () => $("#themeDialog").close()); document.querySelectorAll("[data-theme-choice]").forEach((button) => button.addEventListener("click", () => { applyTheme(button.dataset.themeChoice); showToast("外观已切换"); }));
 $("#saveBrandBtn")?.addEventListener("click", saveBrand);
 $("#brandNameInput")?.addEventListener("input", () => { const status = $("#brandSaveStatus"); if (status) status.hidden = true; });
-$("#downloadCsvBtn").addEventListener("click", exportCsv); $("#downloadBackupBtn").addEventListener("click", exportBackup); $("#importBackupBtn").addEventListener("click", importBackup);
+$("#downloadCsvBtn").addEventListener("click", exportCsv); $("#downloadSavingsCsvBtn")?.addEventListener("click", exportSavingsCsv); $("#downloadBackupBtn").addEventListener("click", exportBackup); $("#importBackupBtn").addEventListener("click", importBackup);
 $("#majorInput").innerHTML = Object.keys(CATEGORIES).map((category) => `<option>${category}</option>`).join(""); $("#majorInput").addEventListener("change", fillMinorCategories); $("#minorInput").addEventListener("change", (event) => $("#customMinorField").classList.toggle("hidden", event.target.value !== "__custom"));
 $("#expenseForm").addEventListener("submit", (event) => {
   event.preventDefault();
