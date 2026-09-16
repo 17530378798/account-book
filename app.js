@@ -2,7 +2,7 @@ const STORAGE_KEY = "offline-ledger-users-v1";
 const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const THEME_KEY = "offline-ledger-theme-v1";
 const BRAND_KEY = "offline-ledger-brand-v1";
-const APP_VERSION = "28";
+const APP_VERSION = "29";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -371,6 +371,20 @@ function normalizeCsv(text) {
   const records = rows.map((row) => ({ id: position("ID") >= 0 ? row[position("ID")] : "", date: row[datePosition], amount: row[position("金额")], major: row[position("大类")], minor: position("小类") >= 0 ? row[position("小类")] : "未分类", necessity: position("必要性") >= 0 ? row[position("必要性")] : "必要", oneTime: position("大额单次支出") >= 0 && ["是", "true", "1"].includes(String(row[position("大额单次支出")]).toLowerCase()), note: position("备注") >= 0 ? row[position("备注")] : "" }));
   return normalizeBackup({ records, budgets: {} });
 }
+function normalizeSavingsCsv(text) {
+  const rows = parseCsv(text).filter((row) => row.some((cell) => cell.trim()));
+  if (rows.length < 1) throw new Error("CSV 文件没有内容");
+  const headers = rows.shift().map((header) => header.trim());
+  const position = (name) => headers.indexOf(name);
+  if ([position("月份"), position("存款金额")].some((index) => index < 0)) throw new Error("存款 CSV 缺少月份/存款金额列");
+  const savings = rows.map((row) => normalizeSaving({ id: position("ID") >= 0 ? row[position("ID")] : "", month: row[position("月份")], date: position("存款日期") >= 0 ? row[position("存款日期")] : row[position("月份")], amount: row[position("存款金额")], note: position("备注") >= 0 ? row[position("备注")] : "" }));
+  return { records: [], budgets: {}, deletedRecords: [], savings };
+}
+function isSavingsCsv(text) {
+  const rows = parseCsv(text).filter((row) => row.some((cell) => cell.trim()));
+  const headers = rows[0]?.map((header) => header.trim()) || [];
+  return headers.includes("月份") && headers.includes("存款金额");
+}
 async function importBackup() {
   const file = $("#importFileInput").files[0];
   const button = $("#importBackupBtn");
@@ -379,30 +393,40 @@ async function importBackup() {
   try {
     const text = await file.text();
     const isCsv = /\.csv$/i.test(file.name) || file.type.includes("csv") || !text.trimStart().startsWith("{");
-    const incoming = isCsv ? normalizeCsv(text) : normalizeBackup(JSON.parse(text));
+    const savingsCsv = isCsv && isSavingsCsv(text);
+    const incoming = savingsCsv ? normalizeSavingsCsv(text) : isCsv ? normalizeCsv(text) : normalizeBackup(JSON.parse(text));
     const mode = $("#importModeInput").value;
     if (mode === "replace" && !confirm("替换会覆盖当前账本，确定继续吗？")) { setImportStatus("已取消导入", "show"); return; }
     const { store, account } = currentAccount();
     let added = 0; let updated = 0;
-    if (mode === "replace") {
+    if (mode === "replace" && savingsCsv) {
+      account.savings = incoming.savings;
+      added = incoming.savings.length;
+    } else if (mode === "replace") {
       store[ACCOUNT] = { records: incoming.records, budgets: isCsv ? account.budgets : incoming.budgets, deletedRecords: incoming.deletedRecords ?? account.deletedRecords, savings: isCsv ? account.savings : incoming.savings ?? account.savings };
       added = incoming.records.length;
     } else {
-      const recordsById = new Map(account.records.map((record) => [String(record.id), record]));
-      incoming.records.forEach((record) => { if (recordsById.has(String(record.id))) updated += 1; else added += 1; recordsById.set(String(record.id), record); });
-      account.records = [...recordsById.values()];
-      account.deletedRecords = [...new Map([...account.deletedRecords, ...(incoming.deletedRecords || [])].map((record) => [String(record.id), record])).values()];
-      Object.entries(incoming.budgets).forEach(([month, categories]) => { account.budgets[month] = { ...(account.budgets[month] || {}), ...categories }; });
-      if (!isCsv) account.savings = [...new Map([...account.savings, ...(incoming.savings || [])].map((saving) => [saving.month, saving])).values()].sort((a, b) => b.month.localeCompare(a.month));
+      if (savingsCsv) {
+        const savingsByMonth = new Map(account.savings.map((saving) => [saving.month, saving]));
+        incoming.savings.forEach((saving) => { if (savingsByMonth.has(saving.month)) updated += 1; else added += 1; savingsByMonth.set(saving.month, saving); });
+        account.savings = [...savingsByMonth.values()].sort((a, b) => b.month.localeCompare(a.month));
+      } else {
+        const recordsById = new Map(account.records.map((record) => [String(record.id), record]));
+        incoming.records.forEach((record) => { if (recordsById.has(String(record.id))) updated += 1; else added += 1; recordsById.set(String(record.id), record); });
+        account.records = [...recordsById.values()];
+        account.deletedRecords = [...new Map([...account.deletedRecords, ...(incoming.deletedRecords || [])].map((record) => [String(record.id), record])).values()];
+        Object.entries(incoming.budgets).forEach(([month, categories]) => { account.budgets[month] = { ...(account.budgets[month] || {}), ...categories }; });
+        if (!isCsv) account.savings = [...new Map([...account.savings, ...(incoming.savings || [])].map((saving) => [saving.month, saving])).values()].sort((a, b) => b.month.localeCompare(a.month));
+      }
     }
     const activeIds = new Set(store[ACCOUNT].records.map((record) => String(record.id)));
     store[ACCOUNT].deletedRecords = store[ACCOUNT].deletedRecords.filter((record) => !activeIds.has(String(record.id)));
     persist(store);
-    const latest = incoming.records.map((record) => record.date.slice(0, 7)).sort().pop();
+    const latest = savingsCsv ? incoming.savings.map((saving) => saving.month).sort().pop() : incoming.records.map((record) => record.date.slice(0, 7)).sort().pop();
     if (latest) selectedMonth = latest;
-    setView("records");
-    setImportStatus(`导入完成：新增 ${added} 条，更新 ${updated} 条`, "show");
-    showToast(`导入完成，共 ${incoming.records.length} 条记录`);
+    setView(savingsCsv ? "overview" : "records");
+    setImportStatus(`${savingsCsv ? "存款" : "账单"}导入完成：新增 ${added} 条，更新 ${updated} 条`, "show");
+    showToast(`${savingsCsv ? "存款" : "账单"}导入完成，共 ${savingsCsv ? incoming.savings.length : incoming.records.length} 条记录`);
     setTimeout(() => $("#dataDialog")?.close(), 1200);
   } catch (error) {
     setImportStatus(error.message || "备份文件无法读取", "error");
