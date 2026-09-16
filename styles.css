@@ -240,7 +240,8 @@ dialog::backdrop { background: rgba(25, 42, 37, .35); }
 @media (max-width: 560px) { .main { padding: 20px 14px; } .topbar { align-items: flex-start; flex-direction: column; } .top-actions { width: 100%; } .top-actions .month-picker { flex: 1; } .stats-grid { gap: 9px; } .stat-card { padding: 14px; } .stat-card strong { font-size: 21px; } .donut-layout { grid-template-columns: 1fr; justify-items: center; } .legend { width: 100%; } .record-filters { grid-template-columns: 1fr 1fr; } .record-filters input, .record-filters select { font-size: 16px; } }
 
 @media (max-width: 600px), (hover: none) and (pointer: coarse) and (max-height: 600px) {
-  html, body { width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: manipulation; }
+  button, a, input, select, textarea, label { touch-action: manipulation; }
   body { position: fixed; inset: 0; }
   .app-shell { position: fixed; inset: 0; display: block; width: 100%; height: 100%; height: 100dvh; min-height: 0; overflow: hidden; }
   .sidebar { position: fixed !important; z-index: 1000; left: 0; right: 0; bottom: 0; height: calc(64px + env(safe-area-inset-bottom)); padding: 0 8px env(safe-area-inset-bottom); border: 0; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); transform: translate3d(0, 0, 0); contain: layout paint; }
