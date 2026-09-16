@@ -252,7 +252,7 @@ dialog::backdrop { background: rgba(25, 42, 37, .35); }
 @media (max-width: 560px) { .main { padding: 20px 14px; } .topbar { align-items: flex-start; flex-direction: column; } .top-actions { width: 100%; } .top-actions .month-picker { flex: 1; } .stats-grid { gap: 9px; } .stat-card { padding: 14px; } .stat-card strong { font-size: 21px; } .donut-layout { grid-template-columns: 1fr; justify-items: center; } .legend { width: 100%; } .record-filters { grid-template-columns: 1fr 1fr; } .record-filters input, .record-filters select { font-size: 16px; } }
 
 @media (max-width: 600px), (hover: none) and (pointer: coarse) and (max-height: 600px) {
-  html, body { width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: manipulation; }
+  html, body { width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: pan-x pan-y; }
   button, a, input, select, textarea, label { touch-action: manipulation; }
   body { position: fixed; inset: 0; }
   .app-shell { position: fixed; inset: 0; display: block; width: 100%; height: 100%; height: 100dvh; min-height: 0; overflow: hidden; }

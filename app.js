@@ -3,7 +3,7 @@ const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const HISTORY_KEY = "offline-ledger-history-v1";
 const THEME_KEY = "offline-ledger-theme-v1";
 const BRAND_KEY = "offline-ledger-brand-v1";
-const APP_VERSION = "35";
+const APP_VERSION = "37";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -16,6 +16,12 @@ const COLORS = ["#1f8f78", "#e09f3e", "#457b9d", "#d66565", "#5f7f72", "#9c6f9e"
 const $ = (selector) => document.querySelector(selector);
 let selectedMonth = localMonth(); let activeView = "overview"; let editingRecordId = null; let editingIncomeId = null;
 const recordFilters = { query: "", category: "", necessity: "", min: "", max: "" };
+let lastTouchEnd = 0;
+document.addEventListener("touchend", (event) => {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 500) event.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
 function localMonth() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`; }
 function localDateTime() { const now = new Date(); return new Date(now - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
 class LedgerStorageError extends Error {}
