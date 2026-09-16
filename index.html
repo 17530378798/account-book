@@ -9,8 +9,8 @@
   <meta name="apple-mobile-web-app-title" content="情绪稳定">
   <link rel="icon" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-180.png">
-  <link rel="manifest" href="manifest.webmanifest?v=30">
-  <link rel="stylesheet" href="styles.css?v=30">
+  <link rel="manifest" href="manifest.webmanifest?v=31">
+  <link rel="stylesheet" href="styles.css?v=31">
   <title>情绪稳定</title>
 </head>
 <body>
@@ -95,14 +95,15 @@
       </section>
       <section class="data-section">
         <h3>导入账本</h3>
-        <p>支持导入消费 CSV、存款 CSV 或完整 JSON 文件；存款 CSV 需要包含“月份、存款金额”列。</p>
+        <p>先选择要导入的内容。支付记录和存款记录分开处理，互不覆盖；完整备份使用 JSON 文件。</p>
         <div class="field"><label for="importFileInput">账本文件</label><input id="importFileInput" type="file" accept=".csv,.json,text/csv,application/json"></div>
-        <div class="field"><label for="importModeInput">导入方式</label><select id="importModeInput"><option value="merge">合并到现有账本</option><option value="replace">替换当前账本</option></select></div><div id="importStatus" class="import-status" role="status" aria-live="polite"></div>
+        <div class="field"><label for="importTypeInput">导入内容</label><select id="importTypeInput"><option value="payments">支付记录 CSV</option><option value="savings">存款记录 CSV</option><option value="backup">完整备份 JSON</option></select></div>
+        <div class="field"><label for="importModeInput">处理方式</label><select id="importModeInput"><option value="merge">合并到现有数据</option><option value="replace">替换所选类型的数据</option></select></div><div id="importStatus" class="import-status" role="status" aria-live="polite"></div>
         <button id="importBackupBtn" type="button" class="primary-btn wide-btn">导入备份</button>
       </section>
     </div>
   </dialog>
   <div id="toast" class="toast" role="status"></div>
-  <script src="app.js?v=30"></script>
+  <script src="app.js?v=31"></script>
 </body>
 </html>

@@ -2,7 +2,7 @@ const STORAGE_KEY = "offline-ledger-users-v1";
 const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const THEME_KEY = "offline-ledger-theme-v1";
 const BRAND_KEY = "offline-ledger-brand-v1";
-const APP_VERSION = "30";
+const APP_VERSION = "31";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -380,10 +380,15 @@ function normalizeSavingsCsv(text) {
   const savings = rows.map((row) => normalizeSaving({ id: position("ID") >= 0 ? row[position("ID")] : "", month: row[position("月份")], date: position("存款日期") >= 0 ? row[position("存款日期")] : row[position("月份")], amount: row[position("存款金额")], note: position("备注") >= 0 ? row[position("备注")] : "" }));
   return { records: [], budgets: {}, deletedRecords: [], savings };
 }
-function isSavingsCsv(text) {
-  const rows = parseCsv(text).filter((row) => row.some((cell) => cell.trim()));
-  const headers = rows[0]?.map((header) => header.trim()) || [];
-  return headers.includes("月份") && headers.includes("存款金额");
+function normalizeImport(text, type) {
+  const trimmed = text.trimStart();
+  if (type === "backup") {
+    if (!trimmed.startsWith("{")) throw new Error("请选择完整备份 JSON 文件");
+    return { kind: "backup", incoming: normalizeBackup(JSON.parse(text)) };
+  }
+  if (trimmed.startsWith("{")) throw new Error(type === "savings" ? "请选择存款记录 CSV 文件" : "请选择支付记录 CSV 文件");
+  if (type === "savings") return { kind: "savings", incoming: normalizeSavingsCsv(text) };
+  return { kind: "payments", incoming: normalizeCsv(text) };
 }
 async function importBackup() {
   const file = $("#importFileInput").files[0];
@@ -392,11 +397,12 @@ async function importBackup() {
   setImportStatus("正在读取文件…", "show"); button.disabled = true;
   try {
     const text = await file.text();
-    const isCsv = /\.csv$/i.test(file.name) || file.type.includes("csv") || !text.trimStart().startsWith("{");
-    const savingsCsv = isCsv && isSavingsCsv(text);
-    const incoming = savingsCsv ? normalizeSavingsCsv(text) : isCsv ? normalizeCsv(text) : normalizeBackup(JSON.parse(text));
+    const selectedType = $("#importTypeInput")?.value || (text.trimStart().startsWith("{") ? "backup" : "payments");
+    const { kind, incoming } = normalizeImport(text, selectedType);
+    const savingsCsv = kind === "savings", isCsv = kind !== "backup";
     const mode = $("#importModeInput").value;
-    if (mode === "replace" && !confirm("替换会覆盖当前账本，确定继续吗？")) { setImportStatus("已取消导入", "show"); return; }
+    const replaceName = savingsCsv ? "现有存款记录" : kind === "payments" ? "现有支付记录" : "当前完整账本";
+    if (mode === "replace" && !confirm(`替换会覆盖${replaceName}，确定继续吗？`)) { setImportStatus("已取消导入", "show"); return; }
     const { store, account } = currentAccount();
     let added = 0; let updated = 0;
     if (mode === "replace" && savingsCsv) {
@@ -432,7 +438,14 @@ async function importBackup() {
     setImportStatus(error.message || "备份文件无法读取", "error");
   } finally { button.disabled = false; }
 }
-function openDataDialog() { $("#importFileInput").value = ""; setImportStatus("", "hide"); $("#dataDialog").showModal(); }
+function updateImportType() {
+  const type = $("#importTypeInput")?.value || "payments", input = $("#importFileInput");
+  if (!input) return;
+  input.accept = type === "backup" ? ".json,application/json" : ".csv,text/csv";
+  input.value = "";
+  setImportStatus("", "hide");
+}
+function openDataDialog() { updateImportType(); $("#dataDialog").showModal(); }
 document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
 $("#monthInput").addEventListener("change", (event) => { selectedMonth = event.target.value || localMonth(); renderActiveView(); });
 $("#openAddBtn").addEventListener("click", openExpenseDialog); $("#closeExpenseBtn").addEventListener("click", () => { $("#expenseDialog").close(); resetExpenseDialog(); });
@@ -442,6 +455,7 @@ $("#exportBtn").addEventListener("click", openDataDialog); $("#mobileDataBtn").a
 $("#themeBtn").addEventListener("click", openThemeDialog); $("#mobileThemeBtn").addEventListener("click", openThemeDialog); $("#closeThemeBtn").addEventListener("click", () => $("#themeDialog").close()); document.querySelectorAll("[data-theme-choice]").forEach((button) => button.addEventListener("click", () => { applyTheme(button.dataset.themeChoice); showToast("外观已切换"); }));
 $("#saveBrandBtn")?.addEventListener("click", saveBrand);
 $("#brandNameInput")?.addEventListener("input", () => { const status = $("#brandSaveStatus"); if (status) status.hidden = true; });
+$("#importTypeInput")?.addEventListener("change", updateImportType);
 $("#downloadCsvBtn").addEventListener("click", exportCsv); $("#downloadSavingsCsvBtn")?.addEventListener("click", exportSavingsCsv); $("#downloadBackupBtn").addEventListener("click", exportBackup); $("#importBackupBtn").addEventListener("click", importBackup);
 $("#majorInput").innerHTML = Object.keys(CATEGORIES).map((category) => `<option>${category}</option>`).join(""); $("#majorInput").addEventListener("change", fillMinorCategories); $("#minorInput").addEventListener("change", (event) => $("#customMinorField").classList.toggle("hidden", event.target.value !== "__custom"));
 $("#expenseForm").addEventListener("submit", (event) => {
