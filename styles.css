@@ -221,6 +221,12 @@ dialog::backdrop { background: rgba(25, 42, 37, .35); }
 .wide-btn { width: 100%; min-height: 44px; }
 .export-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .export-full { grid-column: 1 / -1; }
+.import-month-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.import-month-chip { border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px; background: var(--control); color: var(--muted); font-size: 13px; }
+.import-month-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.import-month-actions { display: flex; align-items: center; gap: 6px; min-height: 32px; }
+.import-month-actions .ghost-btn { padding: 6px 9px; font-size: 12px; }
+.import-month-actions .muted { margin-left: auto; font-size: 12px; }
 .import-status { display: none; margin: 0 0 12px; padding: 10px 12px; border-radius: 9px; font-size: 13px; line-height: 1.5; }
 .import-status.show { display: block; background: var(--accent-soft); color: var(--accent); }
 .import-status.error { display: block; background: var(--danger-soft); color: var(--danger); }

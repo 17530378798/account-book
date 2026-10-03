@@ -3,7 +3,7 @@ const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const HISTORY_KEY = "offline-ledger-history-v1";
 const THEME_KEY = "offline-ledger-theme-v1";
 const BRAND_KEY = "offline-ledger-brand-v1";
-const APP_VERSION = "38";
+const APP_VERSION = "39";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -372,6 +372,12 @@ async function exportCsv() {
   const content = `\uFEFF${[headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
   await deliverFile(new File([content], `支付记录-${localMonth()}.csv`, { type: "text/csv;charset=utf-8" }), "支付记录 CSV");
 }
+async function exportIncomeCsv() {
+  const headers = ["ID", "收入日期时间", "收入金额", "收入类型", "备注"];
+  const rows = currentAccount().account.incomes.map((income) => [income.id, income.date, income.amount, income.category, income.note]);
+  const content = `\uFEFF${[headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
+  await deliverFile(new File([content], `收入记录-${localMonth()}.csv`, { type: "text/csv;charset=utf-8" }), "收入记录 CSV");
+}
 async function exportSavingsCsv() {
   const content = savingsCsvContent(currentAccount().account.savings);
   await deliverFile(new File([content], `每月存款-${localMonth()}.csv`, { type: "text/csv;charset=utf-8" }), "每月存款记录 CSV");
@@ -459,15 +465,130 @@ function normalizeSavingsCsv(text) {
   const savings = rows.map((row) => normalizeSaving({ id: position("ID") >= 0 ? row[position("ID")] : "", month: row[position("月份")], date: position("存款日期") >= 0 ? row[position("存款日期")] : row[position("月份")], amount: row[position("存款金额")], note: position("备注") >= 0 ? row[position("备注")] : "" }));
   return { records: [], budgets: {}, deletedRecords: [], savings };
 }
+function stableCsvImportId(seed, occurrences) {
+  let hash = 2166136261;
+  for (const char of seed) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); }
+  const occurrence = (occurrences.get(hash) || 0) + 1;
+  occurrences.set(hash, occurrence);
+  return `import-${hash >>> 0}${occurrence > 1 ? `-${occurrence}` : ""}`;
+}
+function normalizeIncomeCsv(text) {
+  const rows = parseCsv(text).filter((row) => row.some((cell) => cell.trim()));
+  if (rows.length < 1) throw new Error("CSV 文件没有内容");
+  const headers = rows.shift().map((header) => header.trim());
+  const position = (name) => headers.indexOf(name);
+  const firstPosition = (...names) => names.map((name) => position(name)).find((index) => index >= 0) ?? -1;
+  const datePosition = firstPosition("收入日期时间", "日期时间", "收入日期", "日期");
+  const amountPosition = firstPosition("收入金额", "金额");
+  if ([datePosition, amountPosition].some((index) => index < 0)) throw new Error("收入 CSV 缺少日期/金额列");
+  const occurrences = new Map();
+  const incomes = rows.map((row, index) => {
+    const date = row[datePosition];
+    const amount = row[amountPosition];
+    const category = position("收入类型") >= 0 ? row[position("收入类型")] : position("类型") >= 0 ? row[position("类型")] : "其他收入";
+    const note = position("备注") >= 0 ? row[position("备注")] : "";
+    const id = position("ID") >= 0 && row[position("ID")] ? row[position("ID")] : stableCsvImportId(`${date}|${amount}|${category}|${note}`, occurrences);
+    return normalizeIncome({ id, date, amount, category, note }, index);
+  });
+  return { records: [], budgets: {}, deletedRecords: [], incomes: normalizeIncomes(incomes) };
+}
 function normalizeImport(text, type) {
   const trimmed = text.trimStart();
   if (type === "backup") {
     if (!trimmed.startsWith("{")) throw new Error("请选择完整备份 JSON 文件");
     return { kind: "backup", incoming: normalizeBackup(JSON.parse(text)) };
   }
-  if (trimmed.startsWith("{")) throw new Error(type === "savings" ? "请选择存款记录 CSV 文件" : "请选择支付记录 CSV 文件");
+  if (trimmed.startsWith("{")) throw new Error(type === "savings" ? "请选择存款记录 CSV 文件" : type === "incomes" ? "请选择收入记录 CSV 文件" : "请选择支付记录 CSV 文件");
   if (type === "savings") return { kind: "savings", incoming: normalizeSavingsCsv(text) };
+  if (type === "incomes") return { kind: "incomes", incoming: normalizeIncomeCsv(text) };
   return { kind: "payments", incoming: normalizeCsv(text) };
+}
+const importMonthState = { months: [], selected: new Set(), key: "" };
+function monthFromDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}` : "";
+}
+function incomingMonths(kind, incoming) {
+  const months = new Set();
+  const addDateMonths = (items) => (items || []).forEach((item) => { const month = monthFromDate(item?.date); if (month) months.add(month); });
+  if (kind === "payments" || kind === "backup") addDateMonths(incoming.records);
+  if (kind === "incomes" || kind === "backup") addDateMonths(incoming.incomes);
+  if (kind === "savings" || kind === "backup") (incoming.savings || []).forEach((saving) => { if (/^\d{4}-\d{2}$/.test(saving?.month || "")) months.add(saving.month); });
+  if (kind === "backup") Object.keys(incoming.budgets || {}).forEach((month) => { if (/^\d{4}-\d{2}$/.test(month)) months.add(month); });
+  return [...months].sort().reverse();
+}
+function filterIncomingByMonths(incoming, selectedMonths) {
+  const selected = selectedMonths instanceof Set ? selectedMonths : new Set(selectedMonths);
+  const filterDates = (items) => items === undefined ? undefined : (items || []).filter((item) => selected.has(monthFromDate(item?.date)));
+  return {
+    records: filterDates(incoming.records),
+    deletedRecords: filterDates(incoming.deletedRecords),
+    budgets: Object.fromEntries(Object.entries(incoming.budgets || {}).filter(([month]) => selected.has(month))),
+    savings: incoming.savings === undefined ? undefined : (incoming.savings || []).filter((saving) => selected.has(saving.month)),
+    incomes: filterDates(incoming.incomes)
+  };
+}
+function selectedImportMonths() {
+  return importMonthState.months.filter((month) => importMonthState.selected.has(month));
+}
+function updateImportMonthSummary() {
+  const summary = $("#importMonthSummary");
+  if (!summary) return;
+  const count = importMonthState.selected.size;
+  summary.textContent = count ? `已选 ${count} 个月` : "请至少选择一个月";
+}
+function renderImportMonths() {
+  const field = $("#importMonthField"), options = $("#importMonthOptions");
+  if (!field || !options) return;
+  field.hidden = !importMonthState.months.length;
+  options.innerHTML = importMonthState.months.map((month) => `<button type="button" class="import-month-chip" data-import-month="${month}" aria-pressed="${importMonthState.selected.has(month)}">${monthText(month)}</button>`).join("");
+  options.querySelectorAll("[data-import-month]").forEach((button) => button.addEventListener("click", () => {
+    const month = button.dataset.importMonth;
+    if (importMonthState.selected.has(month)) importMonthState.selected.delete(month);
+    else importMonthState.selected.add(month);
+    button.setAttribute("aria-pressed", String(importMonthState.selected.has(month)));
+    updateImportMonthSummary();
+  }));
+  updateImportMonthSummary();
+}
+function resetImportMonths() {
+  importMonthState.months = [];
+  importMonthState.selected = new Set();
+  importMonthState.key = "";
+  const field = $("#importMonthField"), options = $("#importMonthOptions");
+  if (field) field.hidden = true;
+  if (options) options.innerHTML = "";
+  updateImportMonthSummary();
+}
+function setImportMonths(months) {
+  importMonthState.months = [...new Set(months)].filter((month) => /^\d{4}-\d{2}$/.test(month)).sort().reverse();
+  importMonthState.selected = new Set();
+  const preferred = importMonthState.months.includes(selectedMonth) ? selectedMonth : importMonthState.months[0];
+  if (preferred) importMonthState.selected.add(preferred);
+  renderImportMonths();
+}
+async function previewImportFile() {
+  const file = $("#importFileInput")?.files[0];
+  const type = $("#importTypeInput")?.value || "payments";
+  resetImportMonths();
+  if (!file) return;
+  const key = `${file.name}|${file.size}|${file.lastModified}|${type}`;
+  importMonthState.key = key;
+  setImportStatus("正在读取月份…", "show");
+  try {
+    const text = await file.text();
+    if (importMonthState.key !== key) return;
+    const { kind, incoming } = normalizeImport(text, type);
+    const months = incomingMonths(kind, incoming);
+    if (!months.length) throw new Error("文件中没有可以导入的月份");
+    setImportMonths(months);
+    setImportStatus(`识别到 ${months.length} 个月，已默认选择最近月份`, "show");
+  } catch (error) {
+    if (importMonthState.key === key) setImportStatus(error.message || "文件无法读取", "error");
+  }
+}
+function countIncomingChanges(existingIds, incomingIds, counts) {
+  incomingIds.forEach((id) => { if (existingIds.has(String(id))) counts.updated += 1; else counts.added += 1; });
 }
 async function importBackup() {
   const file = $("#importFileInput").files[0];
@@ -477,42 +598,71 @@ async function importBackup() {
   try {
     const text = await file.text();
     const selectedType = $("#importTypeInput")?.value || (text.trimStart().startsWith("{") ? "backup" : "payments");
-    const { kind, incoming } = normalizeImport(text, selectedType);
-    const savingsCsv = kind === "savings", isCsv = kind !== "backup";
+    const { kind, incoming: rawIncoming } = normalizeImport(text, selectedType);
+    const months = incomingMonths(kind, rawIncoming);
+    if (!months.length) throw new Error("文件中没有可以导入的月份");
+    if (importMonthState.key !== `${file.name}|${file.size}|${file.lastModified}|${selectedType}` || !importMonthState.months.length) setImportMonths(months);
+    const selectedMonths = selectedImportMonths();
+    if (!selectedMonths.length) throw new Error("请至少选择一个月份");
+    const selected = new Set(selectedMonths);
+    const incoming = filterIncomingByMonths(rawIncoming, selected);
     const mode = $("#importModeInput").value;
-    const replaceName = savingsCsv ? "现有存款记录" : kind === "payments" ? "现有支付记录" : "当前完整账本";
-    if (mode === "replace" && !confirm(`替换会覆盖${replaceName}，确定继续吗？`)) { setImportStatus("已取消导入", "show"); return; }
-    const { store, account } = currentAccount();
-    let added = 0; let updated = 0;
-    if (mode === "replace" && savingsCsv) {
-      account.savings = incoming.savings;
-      added = incoming.savings.length;
-    } else if (mode === "replace") {
-      store[ACCOUNT] = { records: incoming.records, budgets: isCsv ? account.budgets : incoming.budgets, deletedRecords: incoming.deletedRecords ?? account.deletedRecords, savings: isCsv ? account.savings : incoming.savings ?? account.savings, incomes: isCsv ? account.incomes : incoming.incomes ?? account.incomes };
-      added = incoming.records.length;
-    } else {
-      if (savingsCsv) {
-        const savingsByMonth = new Map(account.savings.map((saving) => [saving.month, saving]));
-        incoming.savings.forEach((saving) => { if (savingsByMonth.has(saving.month)) updated += 1; else added += 1; savingsByMonth.set(saving.month, saving); });
-        account.savings = [...savingsByMonth.values()].sort((a, b) => b.month.localeCompare(a.month));
-      } else {
-        const recordsById = new Map(account.records.map((record) => [String(record.id), record]));
-        incoming.records.forEach((record) => { if (recordsById.has(String(record.id))) updated += 1; else added += 1; recordsById.set(String(record.id), record); });
-        account.records = [...recordsById.values()];
-        account.deletedRecords = [...new Map([...account.deletedRecords, ...(incoming.deletedRecords || [])].map((record) => [String(record.id), record])).values()];
-        Object.entries(incoming.budgets).forEach(([month, categories]) => { account.budgets[month] = { ...(account.budgets[month] || {}), ...categories }; });
-        if (!isCsv) account.savings = [...new Map([...account.savings, ...(incoming.savings || [])].map((saving) => [saving.month, saving])).values()].sort((a, b) => b.month.localeCompare(a.month));
-        if (!isCsv) account.incomes = [...new Map([...account.incomes, ...(incoming.incomes || [])].map((income) => [String(income.id), income])).values()];
-      }
+    const kindName = kind === "savings" ? "存款记录" : kind === "incomes" ? "收入记录" : kind === "payments" ? "支付记录" : "完整备份";
+    if (mode === "replace") {
+      const monthLabel = selectedMonths.length === months.length ? "全部月份" : selectedMonths.join("、");
+      if (!confirm(`替换 ${monthLabel} 的${kindName}，其他月份保持不变。确定继续吗？`)) { setImportStatus("已取消导入", "show"); return; }
     }
-    const activeIds = new Set(store[ACCOUNT].records.map((record) => String(record.id)));
-    store[ACCOUNT].deletedRecords = store[ACCOUNT].deletedRecords.filter((record) => !activeIds.has(String(record.id)));
+    const { store, account } = currentAccount();
+    const counts = { added: 0, updated: 0 };
+    const mergeRecords = (incomingRecords) => {
+      const records = incomingRecords || [];
+      countIncomingChanges(new Set(account.records.map((record) => String(record.id))), records.map((record) => String(record.id)), counts);
+      if (mode === "replace") account.records = account.records.filter((record) => !selected.has(monthFromDate(record.date)));
+      const byId = new Map(account.records.map((record) => [String(record.id), record]));
+      records.forEach((record) => byId.set(String(record.id), record));
+      account.records = [...byId.values()];
+    };
+    const mergeIncomes = (incomingIncomes) => {
+      const incomes = incomingIncomes || [];
+      countIncomingChanges(new Set(account.incomes.map((income) => String(income.id))), incomes.map((income) => String(income.id)), counts);
+      if (mode === "replace") account.incomes = account.incomes.filter((income) => !selected.has(monthFromDate(income.date)));
+      const byId = new Map(account.incomes.map((income) => [String(income.id), income]));
+      incomes.forEach((income) => byId.set(String(income.id), income));
+      account.incomes = [...byId.values()];
+    };
+    const mergeSavings = (incomingSavings) => {
+      const savings = incomingSavings || [];
+      countIncomingChanges(new Set(account.savings.map((saving) => saving.month)), savings.map((saving) => saving.month), counts);
+      if (mode === "replace") account.savings = account.savings.filter((saving) => !selected.has(saving.month));
+      const byMonth = new Map(account.savings.map((saving) => [saving.month, saving]));
+      savings.forEach((saving) => byMonth.set(saving.month, saving));
+      account.savings = [...byMonth.values()].sort((a, b) => b.month.localeCompare(a.month));
+    };
+    if (kind === "payments") {
+      mergeRecords(incoming.records);
+    } else if (kind === "incomes") {
+      mergeIncomes(incoming.incomes);
+    } else if (kind === "savings") {
+      mergeSavings(incoming.savings);
+    } else {
+      if (mode === "replace") {
+        account.deletedRecords = account.deletedRecords.filter((record) => !selected.has(monthFromDate(record.date)));
+        selectedMonths.forEach((month) => delete account.budgets[month]);
+      }
+      mergeRecords(incoming.records);
+      mergeIncomes(incoming.incomes);
+      mergeSavings(incoming.savings);
+      const deletedById = new Map([...account.deletedRecords, ...(incoming.deletedRecords || [])].map((record) => [String(record.id), record]));
+      account.deletedRecords = [...deletedById.values()];
+      Object.entries(incoming.budgets || {}).forEach(([month, categories]) => { account.budgets[month] = { ...(account.budgets[month] || {}), ...categories }; });
+    }
+    const activeIds = new Set(account.records.map((record) => String(record.id)));
+    account.deletedRecords = account.deletedRecords.filter((record) => !activeIds.has(String(record.id)));
     persist(store);
-    const latest = savingsCsv ? incoming.savings.map((saving) => saving.month).sort().pop() : incoming.records.map((record) => record.date.slice(0, 7)).sort().pop();
-    if (latest) selectedMonth = latest;
-    setView(savingsCsv ? "overview" : "records");
-    setImportStatus(`${savingsCsv ? "存款" : "账单"}导入完成：新增 ${added} 条，更新 ${updated} 条`, "show");
-    showToast(`${savingsCsv ? "存款" : "账单"}导入完成，共 ${savingsCsv ? incoming.savings.length : incoming.records.length} 条记录`);
+    selectedMonth = selectedMonths[0];
+    setView(kind === "savings" || kind === "incomes" ? "overview" : "records");
+    setImportStatus(`${kindName}导入完成：${selectedMonths.length} 个月，新增 ${counts.added} 条，更新 ${counts.updated} 条`, "show");
+    showToast(`${kindName}已导入 ${selectedMonths.length} 个月`);
     setTimeout(() => $("#dataDialog")?.close(), 1200);
   } catch (error) {
     setImportStatus(error.message || "备份文件无法读取", "error");
@@ -523,6 +673,7 @@ function updateImportType() {
   if (!input) return;
   input.accept = type === "backup" ? ".json,application/json" : ".csv,text/csv";
   input.value = "";
+  resetImportMonths();
   setImportStatus("", "hide");
 }
 function renderHistory() {
@@ -553,7 +704,10 @@ $("#themeBtn").addEventListener("click", openThemeDialog); $("#mobileThemeBtn").
 $("#saveBrandBtn")?.addEventListener("click", saveBrand);
 $("#brandNameInput")?.addEventListener("input", () => { const status = $("#brandSaveStatus"); if (status) status.hidden = true; });
 $("#importTypeInput")?.addEventListener("change", updateImportType);
-$("#downloadCsvBtn").addEventListener("click", exportCsv); $("#downloadSavingsCsvBtn")?.addEventListener("click", exportSavingsCsv); $("#downloadBackupBtn").addEventListener("click", exportBackup); $("#importBackupBtn").addEventListener("click", importBackup);
+$("#importFileInput")?.addEventListener("change", previewImportFile);
+$("#selectAllImportMonthsBtn")?.addEventListener("click", () => { importMonthState.selected = new Set(importMonthState.months); renderImportMonths(); });
+$("#clearImportMonthsBtn")?.addEventListener("click", () => { importMonthState.selected.clear(); renderImportMonths(); });
+$("#downloadCsvBtn").addEventListener("click", exportCsv); $("#downloadIncomeCsvBtn")?.addEventListener("click", exportIncomeCsv); $("#downloadSavingsCsvBtn")?.addEventListener("click", exportSavingsCsv); $("#downloadBackupBtn").addEventListener("click", exportBackup); $("#importBackupBtn").addEventListener("click", importBackup);
 $("#majorInput").innerHTML = Object.keys(CATEGORIES).map((category) => `<option>${category}</option>`).join(""); $("#majorInput").addEventListener("change", fillMinorCategories); $("#minorInput").addEventListener("change", (event) => $("#customMinorField").classList.toggle("hidden", event.target.value !== "__custom"));
 $("#expenseForm").addEventListener("submit", (event) => {
   event.preventDefault();
