@@ -3,7 +3,7 @@ const BACKUP_STORAGE_KEY = "offline-ledger-users-v1-backup";
 const HISTORY_KEY = "offline-ledger-history-v1";
 const THEME_KEY = "offline-ledger-theme-v1";
 const BRAND_KEY = "offline-ledger-brand-v1";
-const APP_VERSION = "39";
+const APP_VERSION = "40";
 const ACCOUNT = "我的账本";
 const CATEGORIES = {
   "房租水电": ["房租", "水费", "电费", "燃气", "物业"], "饮食": ["早餐", "午餐", "晚餐", "买菜", "零食"],
@@ -366,21 +366,44 @@ async function exportBackup() {
   await deliverFile(new File([JSON.stringify(backupPayload(), null, 2)], fileName, { type: "application/json" }), "情绪稳定完整备份");
 }
 function csvCell(value) { return `"${String(value ?? "").replace(/"/g, '""')}"`; }
+function selectedExportMonth() { return $("#exportMonthInput")?.value || "all"; }
+function renderExportMonths() {
+  const select = $("#exportMonthInput");
+  if (!select) return;
+  const { account } = currentAccount();
+  const months = [...new Set([
+    ...account.records.map((record) => monthFromDate(record.date)),
+    ...account.incomes.map((income) => monthFromDate(income.date)),
+    ...account.savings.map((saving) => saving.month)
+  ].filter((month) => /^\d{4}-\d{2}$/.test(month)))].sort().reverse();
+  const preferred = months.includes(selectedMonth) ? selectedMonth : months[0] || "all";
+  select.innerHTML = `<option value="all">全部月份</option>${months.map((month) => `<option value="${month}">${monthText(month)}</option>`).join("")}`;
+  select.value = preferred;
+}
 async function exportCsv() {
+  const month = selectedExportMonth();
+  const records = currentAccount().account.records.filter((record) => month === "all" || record.date.slice(0, 7) === month);
+  if (month !== "all" && !records.length) return showToast(`${monthText(month)}没有支付记录`);
   const headers = ["ID", "日期时间", "金额", "大类", "小类", "必要性", "大额单次支出", "备注"];
-  const rows = currentAccount().account.records.map((record) => [record.id, record.date, record.amount, record.major, record.minor, record.necessity, record.oneTime ? "是" : "否", record.note]);
+  const rows = records.map((record) => [record.id, record.date, record.amount, record.major, record.minor, record.necessity, record.oneTime ? "是" : "否", record.note]);
   const content = `\uFEFF${[headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
-  await deliverFile(new File([content], `支付记录-${localMonth()}.csv`, { type: "text/csv;charset=utf-8" }), "支付记录 CSV");
+  await deliverFile(new File([content], `支付记录-${month === "all" ? "全部月份" : month}.csv`, { type: "text/csv;charset=utf-8" }), "支付记录 CSV");
 }
 async function exportIncomeCsv() {
+  const month = selectedExportMonth();
+  const incomes = currentAccount().account.incomes.filter((income) => month === "all" || income.date.slice(0, 7) === month);
+  if (month !== "all" && !incomes.length) return showToast(`${monthText(month)}没有收入记录`);
   const headers = ["ID", "收入日期时间", "收入金额", "收入类型", "备注"];
-  const rows = currentAccount().account.incomes.map((income) => [income.id, income.date, income.amount, income.category, income.note]);
+  const rows = incomes.map((income) => [income.id, income.date, income.amount, income.category, income.note]);
   const content = `\uFEFF${[headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
-  await deliverFile(new File([content], `收入记录-${localMonth()}.csv`, { type: "text/csv;charset=utf-8" }), "收入记录 CSV");
+  await deliverFile(new File([content], `收入记录-${month === "all" ? "全部月份" : month}.csv`, { type: "text/csv;charset=utf-8" }), "收入记录 CSV");
 }
 async function exportSavingsCsv() {
-  const content = savingsCsvContent(currentAccount().account.savings);
-  await deliverFile(new File([content], `每月存款-${localMonth()}.csv`, { type: "text/csv;charset=utf-8" }), "每月存款记录 CSV");
+  const month = selectedExportMonth();
+  const savings = currentAccount().account.savings.filter((saving) => month === "all" || saving.month === month);
+  if (month !== "all" && !savings.length) return showToast(`${monthText(month)}没有存款记录`);
+  const content = savingsCsvContent(savings);
+  await deliverFile(new File([content], `每月存款-${month === "all" ? "全部月份" : month}.csv`, { type: "text/csv;charset=utf-8" }), "每月存款记录 CSV");
 }
 function savingsCsvContent(savings) {
   const headers = ["月份", "存款日期", "存款金额", "备注"];
@@ -692,7 +715,7 @@ function restoreHistory(id) {
   const current = localStorage.getItem(STORAGE_KEY); if (current) saveHistorySnapshot(current);
   persist(restored); selectedMonth = localMonth(); $("#dataDialog")?.close(); setView("overview"); showToast("历史版本已恢复");
 }
-function openDataDialog() { updateImportType(); renderHistory(); $("#dataDialog").showModal(); }
+function openDataDialog() { updateImportType(); renderExportMonths(); renderHistory(); $("#dataDialog").showModal(); }
 document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
 $("#monthInput").addEventListener("change", (event) => { selectedMonth = event.target.value || localMonth(); renderActiveView(); });
 $("#openAddBtn").addEventListener("click", openExpenseDialog); $("#closeExpenseBtn").addEventListener("click", () => { $("#expenseDialog").close(); resetExpenseDialog(); });
